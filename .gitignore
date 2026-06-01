@@ -1,0 +1,32 @@
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# Xcode and macOS build products
+DerivedData/
+*.xcuserstate
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.dSYM/
+*.app/
+
+# macOS Finder metadata
+.DS_Store
+**/.DS_Store
+
+# Logs and local runtime files
+*.log
+*.tmp
+*.swp
+*.swo
+
+# Editor and local machine state
+.vscode/
+.idea/
+*.iml
+
+# Local environment files
+.env
+.env.*
