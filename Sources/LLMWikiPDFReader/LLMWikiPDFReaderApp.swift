@@ -3,24 +3,48 @@ import SwiftUI
 
 @main
 struct LLMWikiPDFReaderApp: App {
+    @StateObject private var settings = AppSettings()
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(settings: settings)
                 .frame(minWidth: 1000, minHeight: 700)
         }
         .commands {
             CommandMenu("Reader") {
-                Button("Highlight Selection") {
-                    NotificationCenter.default.post(name: .highlightSelectionShortcut, object: nil)
+                Button("Remove Selected Highlight") {
+                    NotificationCenter.default.post(name: .removeSelectedHighlightShortcut, object: nil)
                 }
-                .keyboardShortcut("h", modifiers: [.command])
+                .keyboardShortcut(.delete, modifiers: [])
+
+                Divider()
+
+                Button("Back") {
+                    NotificationCenter.default.post(name: .backShortcut, object: nil)
+                }
+                .keyboardShortcut(keyEquivalent(for: settings.previousPageShortcutKey), modifiers: [.command])
+
+                Button("Forward") {
+                    NotificationCenter.default.post(name: .forwardShortcut, object: nil)
+                }
+                .keyboardShortcut(keyEquivalent(for: settings.nextPageShortcutKey), modifiers: [.command])
             }
         }
+
+        Settings {
+            SettingsView(settings: settings)
+        }
+    }
+
+    private func keyEquivalent(for value: String) -> KeyEquivalent {
+        KeyEquivalent(value.first ?? " ")
     }
 }
 
 extension Notification.Name {
-    static let highlightSelectionShortcut = Notification.Name("highlightSelectionShortcut")
+    static let removeSelectedHighlightShortcut = Notification.Name("removeSelectedHighlightShortcut")
+    static let backShortcut = Notification.Name("backShortcut")
+    static let forwardShortcut = Notification.Name("forwardShortcut")
 }
 #else
 @main

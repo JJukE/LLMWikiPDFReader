@@ -52,5 +52,17 @@ enum PDFAnnotationBridge {
             }
         }
     }
+
+    static func removeAppAnnotations(withID id: UUID, from document: PDFDocument) {
+        for index in 0..<document.pageCount {
+            guard let page = document.page(at: index) else { continue }
+            for annotation in page.annotations {
+                let annotationID = annotation.value(forAnnotationKey: PDFAnnotationKey(rawValue: appAnnotationKey)) as? String
+                if annotationID == id.uuidString {
+                    page.removeAnnotation(annotation)
+                }
+            }
+        }
+    }
 }
 #endif

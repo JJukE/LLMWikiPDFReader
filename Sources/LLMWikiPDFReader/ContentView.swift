@@ -3,7 +3,14 @@ import AnnotationCore
 import SwiftUI
 
 struct ContentView: View {
-    @StateObject private var appState = AppState()
+    @Environment(\.openSettings) private var openSettings
+    @ObservedObject private var settings: AppSettings
+    @StateObject private var appState: AppState
+
+    init(settings: AppSettings) {
+        self.settings = settings
+        _appState = StateObject(wrappedValue: AppState(settings: settings))
+    }
 
     var body: some View {
         NavigationSplitView {
@@ -11,12 +18,20 @@ struct ContentView: View {
                 .navigationSplitViewColumnWidth(min: 280, ideal: 340, max: 420)
         } detail: {
             VStack(spacing: 0) {
-                toolbar
-                Divider()
                 if appState.pdfDocument == nil {
                     ContentUnavailableView("No PDF Open", systemImage: "doc.text.magnifyingglass")
                 } else {
-                    PDFKitView(pdfDocument: appState.pdfDocument, pdfView: $appState.pdfView)
+                    PDFKitView(
+                        pdfDocument: appState.pdfDocument,
+                        pdfView: $appState.pdfView,
+                        continuousScrolling: settings.continuousScrolling,
+                        showPageBreaks: settings.showPageBreaks,
+                        onSelectAnnotation: { appState.select(annotationID: $0, navigate: false) },
+                        onHighlightSelection: { appState.addHighlightFromSelection(color: $0) },
+                        onRemoveHighlight: appState.removeSelectedOrSelectionHighlights,
+                        onViewportChanged: appState.noteViewportChanged,
+                        onViewReady: appState.scheduleInitialViewLocationCapture
+                    )
                 }
                 Divider()
                 Text(appState.status)
@@ -27,8 +42,14 @@ struct ContentView: View {
                     .padding(8)
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .highlightSelectionShortcut)) { _ in
-            appState.addHighlightFromSelection()
+        .onReceive(NotificationCenter.default.publisher(for: .removeSelectedHighlightShortcut)) { _ in
+            appState.removeSelectedHighlight()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .backShortcut)) { _ in
+            appState.goBack()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .forwardShortcut)) { _ in
+            appState.goForward()
         }
     }
 
@@ -39,51 +60,83 @@ struct ContentView: View {
 
             Button("Choose Vault", action: appState.chooseVault)
             Button("Open PDF", action: appState.openPDF)
+            Button("Settings") {
+                openSettings()
+            }
 
             Divider()
-
-            Picker("Highlight", selection: $appState.selectedColor) {
-                ForEach(HighlightColor.allCases) { color in
-                    Text(label(for: color)).tag(color)
-                }
-            }
-            .pickerStyle(.radioGroup)
-
-            Button("Highlight Selection", action: appState.addHighlightFromSelection)
-                .keyboardShortcut("h", modifiers: [.command])
 
             Button("Export Markdown", action: appState.exportMarkdown)
                 .keyboardShortcut("e", modifiers: [.command])
 
             Divider()
 
+            Text("Move")
+                .font(.headline)
+
+            moveToolbar
+
+            Divider()
+
             Text("Highlights")
                 .font(.headline)
 
-            List(appState.annotations) { annotation in
-                Button {
-                    appState.jump(to: annotation)
-                } label: {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Page \(annotation.page) · \(annotation.color.rawValue.capitalized)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text(annotation.selectedText)
-                            .lineLimit(3)
+            highlightToolbar
+
+            List {
+                ForEach(appState.annotations) { annotation in
+                    Button {
+                        appState.select(annotationID: annotation.id, navigate: true)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Page \(annotation.page) · \(annotation.color.rawValue.capitalized)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text(annotation.selectedText)
+                                .lineLimit(3)
+                                .foregroundStyle(.primary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    .buttonStyle(.plain)
+                    .listRowBackground(
+                        appState.selectedAnnotationID == annotation.id
+                            ? Color.accentColor.opacity(0.12)
+                            : Color.clear
+                    )
                 }
-                .buttonStyle(.plain)
             }
         }
         .padding()
     }
 
-    private var toolbar: some View {
+    private var moveToolbar: some View {
+        HStack(spacing: 8) {
+            Button {
+                appState.goBack()
+            } label: {
+                Image(systemName: "chevron.left")
+            }
+            .help("Back")
+            .disabled(!appState.canGoBack)
+
+            Button {
+                appState.goForward()
+            } label: {
+                Image(systemName: "chevron.right")
+            }
+            .help("Forward")
+            .disabled(!appState.canGoForward)
+
+            Spacer()
+        }
+    }
+
+    private var highlightToolbar: some View {
         HStack(spacing: 8) {
             ForEach(HighlightColor.allCases) { color in
                 Button {
-                    appState.selectedColor = color
-                    appState.addHighlightFromSelection()
+                    appState.addHighlightFromSelection(color: color)
                 } label: {
                     Circle()
                         .fill(swiftUIColor(for: color))
@@ -92,9 +145,16 @@ struct ContentView: View {
                 .help(label(for: color))
                 .keyboardShortcut(keyEquivalent(for: color), modifiers: [.command])
             }
+            Button {
+                appState.removeSelectedHighlight()
+            } label: {
+                Image(systemName: "trash")
+            }
+            .help("Remove selected highlight")
+            .disabled(appState.selectedAnnotationID == nil)
+
             Spacer()
         }
-        .padding(8)
     }
 
     private func label(for color: HighlightColor) -> String {

@@ -2,19 +2,27 @@
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-APP_NAME="LLM Wiki PDF Reader"
+APP_NAME="LLMWikiPDFReader"
 BUNDLE_ID="dev.jjuke.llm-wiki-pdf-reader"
 EXECUTABLE_NAME="LLMWikiPDFReader"
 APP_DIR="$HOME/Applications/$APP_NAME.app"
+LEGACY_APP_DIR="$HOME/Applications/LLM Wiki PDF Reader.app"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
+RESOURCES_DIR="$CONTENTS_DIR/Resources"
+ICON_FILE="AppIcon.icns"
 
 cd "$PROJECT_DIR"
 swift build -c release --product "$EXECUTABLE_NAME"
 
-mkdir -p "$MACOS_DIR"
+if [[ -d "$LEGACY_APP_DIR" && "$LEGACY_APP_DIR" != "$APP_DIR" ]]; then
+    rm -rf "$LEGACY_APP_DIR"
+fi
+
+mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 cp ".build/release/$EXECUTABLE_NAME" "$MACOS_DIR/$EXECUTABLE_NAME"
 chmod +x "$MACOS_DIR/$EXECUTABLE_NAME"
+cp "$PROJECT_DIR/Resources/$ICON_FILE" "$RESOURCES_DIR/$ICON_FILE"
 
 cat > "$CONTENTS_DIR/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -27,6 +35,8 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
     <string>$APP_NAME</string>
     <key>CFBundleIdentifier</key>
     <string>$BUNDLE_ID</string>
+    <key>CFBundleIconFile</key>
+    <string>$ICON_FILE</string>
     <key>CFBundleExecutable</key>
     <string>$EXECUTABLE_NAME</string>
     <key>CFBundlePackageType</key>

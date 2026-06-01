@@ -1,4 +1,4 @@
-# LLM Wiki PDF Reader
+# LLMWikiPDFReader
 
 Lightweight research PDF reader for JJukE's LLM Wiki workflow.
 
@@ -15,6 +15,8 @@ Lightweight research PDF reader for JJukE's LLM Wiki workflow.
 - Does not mutate original PDF files.
 - Keeps Zotero integration read-only for v1. The current resolver accepts Zotero PDFs from shared iCloud through the normal file picker and infers Zotero item links when the PDF path includes an item-key folder.
 - Persists security-scoped PDF bookmark data when macOS provides it.
+- Maintains PDF Back/Forward history for intentional scroll sessions, page jumps, and highlight jumps.
+- Sidebar highlight rows navigate to the stored highlight location in the PDF.
 
 ## Module layout
 
@@ -36,7 +38,9 @@ In the app:
 1. Choose this vault as the vault root.
 2. Open a PDF from the shared iCloud Zotero folder.
 3. Select text and use `Cmd+1`, `Cmd+2`, `Cmd+3`, or `Cmd+4` to highlight.
-4. Export Markdown when you want an Obsidian/LLM-Wiki note.
+4. Use the sidebar highlight list to jump back to stored highlight locations.
+5. Use `Cmd+[` and `Cmd+]` to move through reader navigation history.
+6. Export Markdown when you want an Obsidian/LLM-Wiki note.
 
 ## Check
 
@@ -51,10 +55,18 @@ swift run AnnotationCoreSmokeTests
 ```bash
 cd /Users/jjuke/Desktop/dev/LLMWikiPDFReader
 ./scripts/install_local_app.sh
-open "$HOME/Applications/LLM Wiki PDF Reader.app"
+open "$HOME/Applications/LLMWikiPDFReader.app"
 ```
 
 To keep it in the Dock, launch the app, right-click its Dock icon, then choose `Options > Keep in Dock`.
+
+The install script builds a release executable, bundles the app icon from `Resources/AppIcon.icns`, and writes the app to `$HOME/Applications/LLMWikiPDFReader.app`.
+
+## Reader navigation
+
+Back/Forward history uses normalized visible PDF position rather than raw scroll pixels. Intentional scroll sessions are detected at about `0.5` pages per second; after scrolling stops for 1 second, one history entry is added for the location before that scroll session. This keeps a fast scroll from page 4 to page 1 as one Back step instead of many tiny steps.
+
+Explicit navigation, such as page jumps and sidebar highlight jumps, records the current location before moving. Clicking highlighted text inside the PDF selects it without adding a navigation jump.
 
 ## Data contract
 
