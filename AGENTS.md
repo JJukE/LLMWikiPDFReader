@@ -56,7 +56,7 @@ Use `$switch-mode` when the user asks to move between local reinstall work and G
 - `Switch the codebase to re-install mode.`
 - `Switch the codebase to version management mode.`
 
-Re-install mode is for local iPhone/iPad or signed Xcode runs from this Mac. Use the Xcode `LLMWikiPDFReader` scheme, set the local Apple development team, use a stable private bundle identifier so iOS treats reinstallations as the same app, and optionally seed iPhone/iPad defaults for the annotations folder and default PDF folder. Private values such as `DEVELOPMENT_TEAM`, personal bundle identifiers, provisioning profile names, certificates, folder default paths, and local absolute paths must come from the user's private notes or direct input for that session. Do not hard-code them in source, docs, or the `$switch-mode` skill; only the mode switch may place them in local uncommitted Xcode project settings.
+Re-install mode is for local iPhone/iPad or signed Xcode runs from this Mac. Use the Xcode `LLMWikiPDFReader` scheme, set the local Apple development team, and use a stable private bundle identifier so iOS treats reinstallations as the same app and preserves local app-container data where possible. Private values such as `DEVELOPMENT_TEAM`, personal bundle identifiers, provisioning profile names, certificates, and local absolute paths must come from the user's private notes or direct input for that session; do not store them in this repository or in the `$switch-mode` skill.
 
 Version management mode is for preparing commits, pull requests, and GitHub pushes. Restore checked-in signing fields to public-safe values before publishing. The app target bundle identifier should use a placeholder such as `com.example.LLMWikiPDFReader`, and checked-in project files should not contain a personal Apple team ID.
 
@@ -65,7 +65,7 @@ Before pushing to GitHub, check for accidental personal metadata:
 ```bash
 git ls-files -ci --exclude-standard
 git ls-files | rg "(xcuserdata|\.DS_Store|\.mobileprovision|\.p12|\.pem|\.key|\.env|Package\.resolved)$"
-rg -n "(/Users/|DEVELOPMENT_TEAM|iCloud~QReader)" . --glob '!README.md' --glob '!AGENTS.md' --glob '!*.md'
+rg -n "(/Users/|DEVELOPMENT_TEAM|iCloud~)" . --glob '!README.md' --glob '!AGENTS.md' --glob '!*.md'
 ```
 
 ## Security & Configuration Tips

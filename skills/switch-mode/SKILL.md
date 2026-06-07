@@ -18,7 +18,7 @@ The skill source lives in `skills/switch-mode/` inside this repository. Its mode
 For re-install mode:
 
 1. Ask the user for private signing inputs if they are not already provided in the current turn.
-2. Required private inputs are `DEVELOPMENT_TEAM`, `PRODUCT_BUNDLE_IDENTIFIER`, `annotations-folder-default`, and `default-pdf-folder`.
+2. Required private inputs are `DEVELOPMENT_TEAM` and `PRODUCT_BUNDLE_IDENTIFIER`.
 3. Do not store private values in the skill, repo documentation, examples, or logs beyond the current tool call output.
 4. Run the helper script with `--mode reinstall` and the private values.
 
@@ -41,12 +41,7 @@ python3 skills/switch-mode/scripts/switch_llmwiki_pdfreader_mode.py --mode versi
 Re-install mode example, using values supplied by the user:
 
 ```bash
-python3 skills/switch-mode/scripts/switch_llmwiki_pdfreader_mode.py \
-  --mode reinstall \
-  --development-team ABCDE12345 \
-  --bundle-id com.example.private.LLMWikiPDFReader \
-  --annotations-folder-default "/private/var/mobile/Library/Mobile Documents/example/raw/reader-annotations" \
-  --default-pdf-folder "/private/var/mobile/Library/Mobile Documents/example/Documents/Zotero"
+python3 skills/switch-mode/scripts/switch_llmwiki_pdfreader_mode.py --mode reinstall --development-team ABCDE12345 --bundle-id com.example.private.LLMWikiPDFReader
 ```
 
 Version management mode:
@@ -61,4 +56,4 @@ To make `$switch-mode` discoverable as a normal local Codex skill on a Mac, run:
 ./scripts/install_repo_skills.sh
 ```
 
-The helper script only changes the app target Debug and Release signing fields and iPhoneOS-only generated Info.plist defaults in `LLMWikiPDFReader/LLMWikiPDFReader.xcodeproj/project.pbxproj`.
+The helper script only changes the app target Debug and Release signing fields in `LLMWikiPDFReader/LLMWikiPDFReader.xcodeproj/project.pbxproj`.
