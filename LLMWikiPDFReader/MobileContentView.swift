@@ -669,13 +669,24 @@ private final class MobileAppSettings: ObservableObject {
         self.defaults = defaults
         continuousScrolling = defaults.object(forKey: Keys.continuousScrolling) as? Bool ?? true
         showPageBreaks = defaults.object(forKey: Keys.showPageBreaks) as? Bool ?? true
-        defaultPDFDirectoryPath = defaults.string(forKey: Keys.defaultPDFDirectoryPath)
-        annotationsFolderPath = defaults.string(forKey: Keys.annotationsFolderPath)
+        defaultPDFDirectoryPath = Self.pathSetting(
+            defaults: defaults,
+            pathKey: Keys.defaultPDFDirectoryPath,
+            disabledKey: Keys.defaultPDFDirectoryDefaultDisabled,
+            bundleKey: Keys.defaultPDFDirectoryBundleDefault
+        )
+        annotationsFolderPath = Self.pathSetting(
+            defaults: defaults,
+            pathKey: Keys.annotationsFolderPath,
+            disabledKey: Keys.annotationsFolderDefaultDisabled,
+            bundleKey: Keys.annotationsFolderBundleDefault
+        )
     }
 
     func setAnnotationsFolder(_ url: URL) {
         annotationsFolderPath = url.path
         defaults.set(url.path, forKey: Keys.annotationsFolderPath)
+        defaults.removeObject(forKey: Keys.annotationsFolderDefaultDisabled)
 
         do {
             let bookmark = try url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
@@ -689,6 +700,7 @@ private final class MobileAppSettings: ObservableObject {
         annotationsFolderPath = nil
         defaults.removeObject(forKey: Keys.annotationsFolderPath)
         defaults.removeObject(forKey: Keys.annotationsFolderBookmark)
+        defaults.set(true, forKey: Keys.annotationsFolderDefaultDisabled)
     }
 
     func annotationsFolderURL() -> URL? {
@@ -706,8 +718,7 @@ private final class MobileAppSettings: ObservableObject {
                 }
                 return url
             } catch {
-                clearAnnotationsFolder()
-                return nil
+                defaults.removeObject(forKey: Keys.annotationsFolderBookmark)
             }
         }
 
@@ -718,6 +729,7 @@ private final class MobileAppSettings: ObservableObject {
     func setDefaultPDFDirectory(_ url: URL) {
         defaultPDFDirectoryPath = url.path
         defaults.set(url.path, forKey: Keys.defaultPDFDirectoryPath)
+        defaults.removeObject(forKey: Keys.defaultPDFDirectoryDefaultDisabled)
 
         do {
             let bookmark = try url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
@@ -731,6 +743,24 @@ private final class MobileAppSettings: ObservableObject {
         defaultPDFDirectoryPath = nil
         defaults.removeObject(forKey: Keys.defaultPDFDirectoryPath)
         defaults.removeObject(forKey: Keys.defaultPDFDirectoryBookmark)
+        defaults.set(true, forKey: Keys.defaultPDFDirectoryDefaultDisabled)
+    }
+
+    private static func pathSetting(
+        defaults: UserDefaults,
+        pathKey: String,
+        disabledKey: String,
+        bundleKey: String
+    ) -> String? {
+        if let storedPath = defaults.string(forKey: pathKey), !storedPath.isEmpty {
+            return storedPath
+        }
+        guard !defaults.bool(forKey: disabledKey),
+              let bundledPath = Bundle.main.object(forInfoDictionaryKey: bundleKey) as? String,
+              !bundledPath.isEmpty else {
+            return nil
+        }
+        return bundledPath
     }
 }
 
@@ -739,8 +769,12 @@ private enum Keys {
     static let showPageBreaks = "showPageBreaks"
     static let annotationsFolderBookmark = "annotationsFolderBookmark"
     static let annotationsFolderPath = "annotationsFolderPath"
+    static let annotationsFolderDefaultDisabled = "annotationsFolderDefaultDisabled"
+    static let annotationsFolderBundleDefault = "LLMWikiDefaultAnnotationsFolderPath"
     static let defaultPDFDirectoryBookmark = "defaultPDFDirectoryBookmark"
     static let defaultPDFDirectoryPath = "defaultPDFDirectoryPath"
+    static let defaultPDFDirectoryDefaultDisabled = "defaultPDFDirectoryDefaultDisabled"
+    static let defaultPDFDirectoryBundleDefault = "LLMWikiDefaultPDFDirectoryPath"
 }
 
 private struct MobileSettingsView: View {

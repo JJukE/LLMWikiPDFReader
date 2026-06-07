@@ -12,6 +12,8 @@ from pathlib import Path
 
 PUBLIC_BUNDLE_ID = "com.example.LLMWikiPDFReader"
 PROJECT_RELATIVE_PATH = Path("LLMWikiPDFReader/LLMWikiPDFReader.xcodeproj/project.pbxproj")
+ANNOTATIONS_FOLDER_DEFAULT_KEY = '"INFOPLIST_KEY_LLMWikiDefaultAnnotationsFolderPath[sdk=iphoneos*]"'
+DEFAULT_PDF_FOLDER_KEY = '"INFOPLIST_KEY_LLMWikiDefaultPDFDirectoryPath[sdk=iphoneos*]"'
 
 
 def parse_args() -> argparse.Namespace:
@@ -39,6 +41,14 @@ def parse_args() -> argparse.Namespace:
         help="Private PRODUCT_BUNDLE_IDENTIFIER value. Required for reinstall mode.",
     )
     parser.add_argument(
+        "--annotations-folder-default",
+        help="Private iPhone/iPad default annotations folder path. Required for reinstall mode.",
+    )
+    parser.add_argument(
+        "--default-pdf-folder",
+        help="Private iPhone/iPad default PDF folder path. Required for reinstall mode.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Print a unified diff without writing the project file.",
@@ -46,17 +56,30 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def validate_reinstall_inputs(development_team: str | None, bundle_id: str | None) -> None:
+def validate_reinstall_inputs(
+    development_team: str | None,
+    bundle_id: str | None,
+    annotations_folder_default: str | None,
+    default_pdf_folder: str | None,
+) -> None:
     if not development_team:
         raise SystemExit("--development-team is required for reinstall mode")
     if not bundle_id:
         raise SystemExit("--bundle-id is required for reinstall mode")
+    if not annotations_folder_default:
+        raise SystemExit("--annotations-folder-default is required for reinstall mode")
+    if not default_pdf_folder:
+        raise SystemExit("--default-pdf-folder is required for reinstall mode")
     if not re.fullmatch(r"[A-Za-z0-9]{10}", development_team):
         raise SystemExit("--development-team should be a 10-character Apple team ID")
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.-]*[A-Za-z0-9]", bundle_id):
         raise SystemExit("--bundle-id is not a valid bundle identifier shape")
     if ".." in bundle_id or "." not in bundle_id:
         raise SystemExit("--bundle-id must contain dot-separated identifier components")
+    if not annotations_folder_default.startswith("/"):
+        raise SystemExit("--annotations-folder-default must be an absolute path")
+    if not default_pdf_folder.startswith("/"):
+        raise SystemExit("--default-pdf-folder must be an absolute path")
 
 
 def find_block_end(lines: list[str], start: int) -> int:
@@ -101,11 +124,18 @@ def remove_setting(block: list[str], key: str) -> list[str]:
     return [line for line in block if not setting_re.match(line)]
 
 
+def quote_build_setting_value(value: str) -> str:
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
 def update_app_block(
     block: list[str],
     mode: str,
     development_team: str | None,
     bundle_id: str | None,
+    annotations_folder_default: str | None,
+    default_pdf_folder: str | None,
 ) -> list[str]:
     updated = list(block)
     if mode == "reinstall":
@@ -121,9 +151,23 @@ def update_app_block(
             bundle_id or "",
             "MARKETING_VERSION",
         )
+        updated = set_or_insert_setting(
+            updated,
+            ANNOTATIONS_FOLDER_DEFAULT_KEY,
+            quote_build_setting_value(annotations_folder_default or ""),
+            "GENERATE_INFOPLIST_FILE",
+        )
+        updated = set_or_insert_setting(
+            updated,
+            DEFAULT_PDF_FOLDER_KEY,
+            quote_build_setting_value(default_pdf_folder or ""),
+            ANNOTATIONS_FOLDER_DEFAULT_KEY,
+        )
         return updated
 
     updated = remove_setting(updated, "DEVELOPMENT_TEAM")
+    updated = remove_setting(updated, ANNOTATIONS_FOLDER_DEFAULT_KEY)
+    updated = remove_setting(updated, DEFAULT_PDF_FOLDER_KEY)
     updated = set_or_insert_setting(
         updated,
         "PRODUCT_BUNDLE_IDENTIFIER",
@@ -138,6 +182,8 @@ def transform_project(
     mode: str,
     development_team: str | None,
     bundle_id: str | None,
+    annotations_folder_default: str | None,
+    default_pdf_folder: str | None,
 ) -> tuple[str, int]:
     lines = text.splitlines(keepends=True)
     output: list[str] = []
@@ -157,7 +203,14 @@ def transform_project(
         end = find_block_end(lines, index)
         block = lines[index : end + 1]
         if is_app_build_configuration(block):
-            block = update_app_block(block, mode, development_team, bundle_id)
+            block = update_app_block(
+                block,
+                mode,
+                development_team,
+                bundle_id,
+                annotations_folder_default,
+                default_pdf_folder,
+            )
             changed_blocks += 1
 
         output.extend(block)
@@ -173,7 +226,12 @@ def transform_project(
 def main() -> int:
     args = parse_args()
     if args.mode == "reinstall":
-        validate_reinstall_inputs(args.development_team, args.bundle_id)
+        validate_reinstall_inputs(
+            args.development_team,
+            args.bundle_id,
+            args.annotations_folder_default,
+            args.default_pdf_folder,
+        )
 
     repo = args.repo.expanduser().resolve()
     project_file = repo / PROJECT_RELATIVE_PATH
@@ -186,6 +244,8 @@ def main() -> int:
         args.mode,
         args.development_team,
         args.bundle_id,
+        args.annotations_folder_default,
+        args.default_pdf_folder,
     )
 
     if original == updated:
