@@ -2,7 +2,9 @@ import AnnotationCore
 import Foundation
 
 public struct ZoteroPDFRoot {
-    public static let defaultPath = "/Users/jjuke/Library/Mobile Documents/iCloud~QReader~MarginStudy~easy/Documents/Zotero"
+    public static let defaultPath = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Documents/Zotero", isDirectory: true)
+        .path
 
     public var url: URL
 

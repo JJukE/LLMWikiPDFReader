@@ -2,6 +2,7 @@ import Foundation
 
 public enum AnnotationStoreError: Error {
     case invalidVault(URL)
+    case invalidAnnotationsDirectory(URL)
 }
 
 public struct AnnotationStore {
@@ -9,6 +10,11 @@ public struct AnnotationStore {
 
     public init(fileManager: FileManager = .default) {
         self.fileManager = fileManager
+    }
+
+    public func sidecarURL(for document: ReaderDocument, annotationsDirectoryURL: URL) throws -> URL {
+        try fileManager.createDirectory(at: annotationsDirectoryURL, withIntermediateDirectories: true)
+        return annotationsDirectoryURL.appendingPathComponent("\(documentIdentifier(for: document)).json")
     }
 
     public func sidecarURL(for document: ReaderDocument, vaultURL: URL) throws -> URL {

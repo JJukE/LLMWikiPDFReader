@@ -5,7 +5,6 @@ import Darwin
 import PDFKit
 import SwiftUI
 import UniformTypeIdentifiers
-import VaultExporter
 import ZoteroResolver
 
 @MainActor
@@ -14,7 +13,7 @@ final class AppState: ObservableObject {
     @Published var pdfDocument: PDFDocument?
     @Published var pdfView: PDFView?
     @Published var readerDocument: ReaderDocument?
-    @Published var vaultURL: URL?
+    @Published var annotationsDirectoryURL: URL?
     @Published var status: String = "Open a PDF to begin."
     @Published private(set) var canGoBack = false
     @Published private(set) var canGoForward = false
@@ -36,13 +35,16 @@ final class AppState: ObservableObject {
 
     private let store = AnnotationStore()
     private let settings: AppSettings
-    private let vaultSynchronizer = VaultAnnotationSynchronizer()
     private let zoteroResolver = ZoteroResolver()
     private let scrollHistoryVelocityThreshold: CGFloat = 0.5
     private let scrollStopHistoryDelayNanoseconds: UInt64 = 1_000_000_000
 
     init(settings: AppSettings) {
         self.settings = settings
+        annotationsDirectoryURL = settings.annotationsFolderURL()
+        if annotationsDirectoryURL == nil {
+            status = "Choose an Annotations Folder to begin."
+        }
     }
 
     deinit {
@@ -53,23 +55,47 @@ final class AppState: ObservableObject {
         readerDocument?.annotations.sorted { ($0.page, $0.createdAt) < ($1.page, $1.createdAt) } ?? []
     }
 
-    func chooseVault() {
+    var hasAnnotationsFolder: Bool {
+        annotationsDirectoryURL != nil
+    }
+
+    func restoreAnnotationsFolderFromSettings() {
+        annotationsDirectoryURL = settings.annotationsFolderURL()
+        if annotationsDirectoryURL == nil {
+            status = "Choose an Annotations Folder to begin."
+            stopSidecarObservation()
+            return
+        }
+        updateCurrentDocumentAnnotationsRelativePath()
+        loadSidecarIfAvailable()
+        redrawHighlights()
+        startSidecarObservation()
+    }
+
+    func chooseAnnotationsFolder() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
-        panel.message = "Choose the root of your LLM Wiki Obsidian vault."
+        panel.message = "Choose the folder where highlight JSON files should be saved."
+        panel.directoryURL = annotationsDirectoryURL
         if panel.runModal() == .OK {
-            vaultURL = panel.url
-            updateCurrentDocumentVaultRelativePath()
+            guard let url = panel.url else { return }
+            settings.setAnnotationsFolder(url)
+            annotationsDirectoryURL = settings.annotationsFolderURL() ?? url
+            updateCurrentDocumentAnnotationsRelativePath()
             loadSidecarIfAvailable()
             redrawHighlights()
             startSidecarObservation()
-            status = "Vault selected: \(panel.url?.path ?? "")"
+            status = "Annotations Folder selected: \(url.path)"
         }
     }
 
     func openPDF() {
+        guard hasAnnotationsFolder else {
+            status = "Choose an Annotations Folder before opening PDFs."
+            return
+        }
         guard let url = choosePDFURL(startingAt: settings.defaultPDFDirectoryURL()) else { return }
 
         openPDF(at: url)
@@ -130,7 +156,7 @@ final class AppState: ObservableObject {
         selectedAnnotationID = nil
         clearHistory()
         var metadata = zoteroResolver.metadata(forPDFAt: url, bookmark: securityScopedBookmark(for: url))
-        if let vaultURL, let relativePath = store.relativePath(for: url, in: vaultURL) {
+        if let annotationsDirectoryURL, let relativePath = store.relativePath(for: url, in: annotationsDirectoryURL) {
             metadata.pdfRelativePath = relativePath
         }
         readerDocument = ReaderDocument(paper: metadata)
@@ -562,44 +588,30 @@ final class AppState: ObservableObject {
         status = "Moved to page \(pageIndex + 1)."
     }
 
-    func saveSidecar() {
-        guard let vaultURL, let document = readerDocument else {
-            status = "Choose a vault before saving annotations."
+    func saveAnnotations() {
+        guard let annotationsDirectoryURL, let document = readerDocument else {
+            status = "Choose an Annotations Folder before saving annotations."
             return
         }
         do {
-            let result = try vaultSynchronizer.saveAndExport(document, vaultURL: vaultURL)
-            readerDocument = result.document
+            let sidecarURL = try store.sidecarURL(for: document, annotationsDirectoryURL: annotationsDirectoryURL)
+            let mergedDocument = try store.mergedDocument(document, withExistingDocumentAt: sidecarURL)
+            try store.save(mergedDocument, to: sidecarURL)
+            readerDocument = mergedDocument
             redrawHighlights()
             startSidecarObservation()
-            status = "Saved annotations to \(result.sidecarURL.path)"
+            status = "Saved annotations to \(sidecarURL.path)"
         } catch {
             status = "Failed to save annotations: \(error.localizedDescription)"
         }
     }
 
-    func exportMarkdown() {
-        guard let vaultURL, let document = readerDocument else {
-            status = "Choose a vault before exporting Markdown."
-            return
-        }
-        do {
-            let result = try vaultSynchronizer.saveAndExport(document, vaultURL: vaultURL)
-            readerDocument = result.document
-            redrawHighlights()
-            startSidecarObservation()
-            status = "Exported Markdown to \(result.markdownURL.path)"
-        } catch {
-            status = "Failed to export Markdown: \(error.localizedDescription)"
-        }
-    }
-
     private func loadSidecarIfAvailable() {
-        guard let vaultURL, let document = readerDocument else { return }
+        guard let annotationsDirectoryURL, let document = readerDocument else { return }
         do {
-            let url = try store.sidecarURL(for: document, vaultURL: vaultURL)
+            let url = try store.sidecarURL(for: document, annotationsDirectoryURL: annotationsDirectoryURL)
             if FileManager.default.fileExists(atPath: url.path) {
-                readerDocument = try vaultSynchronizer.loadMergedSidecar(for: document, vaultURL: vaultURL)
+                readerDocument = try store.mergedDocument(document, withExistingDocumentAt: url)
             }
         } catch {
             status = "Could not load existing sidecar: \(error.localizedDescription)"
@@ -615,9 +627,7 @@ final class AppState: ObservableObject {
     }
 
     private func saveAfterHighlightChange() {
-        if settings.autoSaveAnnotations {
-            saveSidecar()
-        }
+        saveAnnotations()
     }
 
     private func removeHighlights(withIDs ids: [HighlightAnnotation.ID], from document: inout ReaderDocument) {
@@ -632,10 +642,10 @@ final class AppState: ObservableObject {
         saveAfterHighlightChange()
     }
 
-    private func updateCurrentDocumentVaultRelativePath() {
-        guard let vaultURL, var document = readerDocument else { return }
+    private func updateCurrentDocumentAnnotationsRelativePath() {
+        guard let annotationsDirectoryURL, var document = readerDocument else { return }
         let pdfURL = URL(fileURLWithPath: document.paper.pdfPath)
-        guard let relativePath = store.relativePath(for: pdfURL, in: vaultURL) else { return }
+        guard let relativePath = store.relativePath(for: pdfURL, in: annotationsDirectoryURL) else { return }
         document.paper.pdfRelativePath = relativePath
         readerDocument = document
     }
@@ -643,8 +653,8 @@ final class AppState: ObservableObject {
     private func startSidecarObservation() {
         stopSidecarObservation()
 
-        guard let vaultURL, let document = readerDocument else { return }
-        guard let sidecarURL = try? store.sidecarURL(for: document, vaultURL: vaultURL) else { return }
+        guard let annotationsDirectoryURL, let document = readerDocument else { return }
+        guard let sidecarURL = try? store.sidecarURL(for: document, annotationsDirectoryURL: annotationsDirectoryURL) else { return }
         guard FileManager.default.fileExists(atPath: sidecarURL.path) else { return }
 
         let fileDescriptor = open(sidecarURL.path, O_EVTONLY)
@@ -675,9 +685,10 @@ final class AppState: ObservableObject {
     }
 
     private func reloadObservedSidecar() {
-        guard let vaultURL, let document = readerDocument else { return }
+        guard let annotationsDirectoryURL, let document = readerDocument else { return }
         do {
-            let syncedDocument = try vaultSynchronizer.loadMergedSidecar(for: document, vaultURL: vaultURL)
+            let sidecarURL = try store.sidecarURL(for: document, annotationsDirectoryURL: annotationsDirectoryURL)
+            let syncedDocument = try store.mergedDocument(document, withExistingDocumentAt: sidecarURL)
             guard syncedDocument != document else { return }
             readerDocument = syncedDocument
             redrawHighlights()

@@ -12,7 +12,7 @@ let package = Package(
         .library(name: "AnnotationCore", targets: ["AnnotationCore"]),
         .library(name: "VaultExporter", targets: ["VaultExporter"]),
         .library(name: "ZoteroResolver", targets: ["ZoteroResolver"]),
-        .executable(name: "LLMWikiPDFReader", targets: ["LLMWikiPDFReader"]),
+        .executable(name: "LLMWikiPDFReaderMac", targets: ["LLMWikiPDFReaderMac"]),
         .executable(name: "AnnotationCoreSmokeTests", targets: ["AnnotationCoreSmokeTests"])
     ],
     targets: [
@@ -26,8 +26,9 @@ let package = Package(
             dependencies: ["AnnotationCore"]
         ),
         .executableTarget(
-            name: "LLMWikiPDFReader",
-            dependencies: ["AnnotationCore", "VaultExporter", "ZoteroResolver"]
+            name: "LLMWikiPDFReaderMac",
+            dependencies: ["AnnotationCore", "VaultExporter", "ZoteroResolver"],
+            path: "Sources/LLMWikiPDFReader"
         ),
         .executableTarget(
             name: "AnnotationCoreSmokeTests",

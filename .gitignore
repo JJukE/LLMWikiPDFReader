@@ -5,6 +5,8 @@ Package.resolved
 
 # Xcode and macOS build products
 DerivedData/
+xcuserdata/
+*.xcuserdatad/
 *.xcuserstate
 *.xcworkspace/xcuserdata/
 *.xcodeproj/xcuserdata/
@@ -26,7 +28,18 @@ DerivedData/
 .vscode/
 .idea/
 *.iml
+Local.xcconfig
+*.local.xcconfig
 
 # Local environment files
 .env
 .env.*
+
+# Signing, provisioning, and private key material
+*.mobileprovision
+*.provisionprofile
+*.p12
+*.cer
+*.der
+*.key
+*.pem

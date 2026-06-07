@@ -297,7 +297,11 @@ struct PDFKitView: UIViewRepresentable {
     var onViewReady: () -> Void
 
     func makeUIView(context: Context) -> PDFView {
-        let view = PDFView()
+        let view = SelectablePDFView()
+        view.onSelectAnnotation = onSelectAnnotation
+        view.onHighlightSelection = onHighlightSelection
+        view.onRemoveHighlight = onRemoveHighlight
+        view.onViewportChanged = onViewportChanged
         view.autoScales = true
         view.displayMode = continuousScrolling ? .singlePageContinuous : .singlePage
         view.displayDirection = .vertical
@@ -306,6 +310,9 @@ struct PDFKitView: UIViewRepresentable {
 
         DispatchQueue.main.async {
             pdfView = view
+            view.configureSelectionObservation()
+            view.configureAnnotationTapRecognition()
+            view.configureViewportObservation()
             onViewReady()
         }
 
@@ -318,12 +325,253 @@ struct PDFKitView: UIViewRepresentable {
         }
         uiView.displayMode = continuousScrolling ? .singlePageContinuous : .singlePage
         uiView.displaysPageBreaks = showPageBreaks
+        if let selectablePDFView = uiView as? SelectablePDFView {
+            selectablePDFView.onSelectAnnotation = onSelectAnnotation
+            selectablePDFView.onHighlightSelection = onHighlightSelection
+            selectablePDFView.onRemoveHighlight = onRemoveHighlight
+            selectablePDFView.onViewportChanged = onViewportChanged
+        }
 
         DispatchQueue.main.async {
             if pdfView !== uiView {
                 pdfView = uiView
             }
+            (uiView as? SelectablePDFView)?.configureSelectionObservation()
+            (uiView as? SelectablePDFView)?.configureAnnotationTapRecognition()
+            (uiView as? SelectablePDFView)?.configureViewportObservation()
             onViewReady()
+        }
+    }
+}
+
+private final class SelectablePDFView: PDFView {
+    var onSelectAnnotation: ((HighlightAnnotation.ID) -> Void)?
+    var onHighlightSelection: ((HighlightColor) -> Void)?
+    var onRemoveHighlight: (() -> Void)?
+    var onViewportChanged: (() -> Void)?
+
+    private var selectionToolbar: UIVisualEffectView?
+    private var selectionObserver: NSObjectProtocol?
+    private var viewportObservation: NSKeyValueObservation?
+    private var annotationTapRecognizer: UITapGestureRecognizer?
+    private var separatorView: UIView?
+    private var removeButton: UIButton?
+    private var showsRemoveButton = false
+
+    deinit {
+        if let selectionObserver {
+            NotificationCenter.default.removeObserver(selectionObserver)
+        }
+        viewportObservation?.invalidate()
+    }
+
+    func configureSelectionObservation() {
+        guard selectionObserver == nil else { return }
+        selectionObserver = NotificationCenter.default.addObserver(
+            forName: Notification.Name.PDFViewSelectionChanged,
+            object: self,
+            queue: .main
+        ) { [weak self] _ in
+            self?.selectionDidChange()
+        }
+    }
+
+    func configureAnnotationTapRecognition() {
+        guard annotationTapRecognizer == nil else { return }
+        let recognizer = UITapGestureRecognizer(target: self, action: #selector(handleAnnotationTap(_:)))
+        recognizer.cancelsTouchesInView = false
+        recognizer.delegate = self
+        addGestureRecognizer(recognizer)
+        annotationTapRecognizer = recognizer
+    }
+
+    func configureViewportObservation() {
+        guard viewportObservation == nil else { return }
+        guard let scrollView = firstScrollView(in: self) else { return }
+        viewportObservation = scrollView.observe(\.contentOffset, options: [.new]) { [weak self] _, _ in
+            DispatchQueue.main.async {
+                self?.onViewportChanged?()
+            }
+        }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        if let selectionToolbar, !selectionToolbar.isHidden {
+            selectionToolbar.frame = toolbarFrame()
+        }
+    }
+
+    private func firstScrollView(in view: UIView) -> UIScrollView? {
+        if let scrollView = view as? UIScrollView {
+            return scrollView
+        }
+        for subview in view.subviews {
+            if let scrollView = firstScrollView(in: subview) {
+                return scrollView
+            }
+        }
+        return nil
+    }
+
+    private func selectionDidChange() {
+        if hasCurrentTextSelection {
+            showSelectionToolbar(includeRemoveButton: false)
+        } else if !showsRemoveButton {
+            hideSelectionToolbar()
+        }
+    }
+
+    private var hasCurrentTextSelection: Bool {
+        let text = currentSelection?.string?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return !text.isEmpty
+    }
+
+    @objc private func handleAnnotationTap(_ recognizer: UITapGestureRecognizer) {
+        guard recognizer.state == .ended else { return }
+        let viewPoint = recognizer.location(in: self)
+        guard let annotationID = appAnnotationID(at: viewPoint) else {
+            if !hasCurrentTextSelection {
+                hideSelectionToolbar()
+            }
+            return
+        }
+
+        clearSelection()
+        onSelectAnnotation?(annotationID)
+        showSelectionToolbar(includeRemoveButton: true)
+    }
+
+    override func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        true
+    }
+
+    private func appAnnotationID(at viewPoint: CGPoint) -> HighlightAnnotation.ID? {
+        guard let page = page(for: viewPoint, nearest: true) else { return nil }
+        let pagePoint = convert(viewPoint, to: page)
+        guard let annotation = page.annotation(at: pagePoint),
+              let rawID = annotation.value(forAnnotationKey: PDFAnnotationKey(rawValue: PDFAnnotationBridge.appAnnotationKey)) as? String,
+              let id = UUID(uuidString: rawID) else {
+            return nil
+        }
+
+        return id
+    }
+
+    private func showSelectionToolbar(includeRemoveButton: Bool) {
+        showsRemoveButton = includeRemoveButton
+        let toolbar = selectionToolbar ?? makeSelectionToolbar()
+        if toolbar.superview == nil {
+            addSubview(toolbar)
+        }
+        separatorView?.isHidden = !includeRemoveButton
+        removeButton?.isHidden = !includeRemoveButton
+        toolbar.frame = toolbarFrame()
+        toolbar.isHidden = false
+    }
+
+    private func hideSelectionToolbar() {
+        selectionToolbar?.isHidden = true
+        showsRemoveButton = false
+    }
+
+    private func toolbarFrame() -> CGRect {
+        let preferredWidth: CGFloat = showsRemoveButton ? 268 : 220
+        let size = CGSize(width: min(bounds.width - 32, preferredWidth), height: 44)
+        return CGRect(
+            x: max(16, (bounds.width - size.width) / 2),
+            y: max(16, safeAreaInsets.top + 12),
+            width: size.width,
+            height: size.height
+        )
+    }
+
+    private func makeSelectionToolbar() -> UIVisualEffectView {
+        let container = UIVisualEffectView(effect: UIBlurEffect(style: .systemMaterial))
+        container.layer.cornerRadius = 10
+        container.layer.masksToBounds = true
+
+        let stackView = UIStackView()
+        stackView.axis = .horizontal
+        stackView.alignment = .center
+        stackView.distribution = .equalSpacing
+        stackView.spacing = 10
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+
+        for color in HighlightColor.allCases {
+            stackView.addArrangedSubview(highlightButton(for: color))
+        }
+
+        let separator = UIView()
+        separator.backgroundColor = UIColor.separator
+        separator.translatesAutoresizingMaskIntoConstraints = false
+        separator.widthAnchor.constraint(equalToConstant: 1).isActive = true
+        separator.heightAnchor.constraint(equalToConstant: 24).isActive = true
+        separator.isHidden = true
+        stackView.addArrangedSubview(separator)
+        separatorView = separator
+
+        let removeButton = removeHighlightButton()
+        removeButton.isHidden = true
+        stackView.addArrangedSubview(removeButton)
+        self.removeButton = removeButton
+
+        container.contentView.addSubview(stackView)
+        NSLayoutConstraint.activate([
+            stackView.leadingAnchor.constraint(equalTo: container.contentView.leadingAnchor, constant: 12),
+            stackView.trailingAnchor.constraint(equalTo: container.contentView.trailingAnchor, constant: -12),
+            stackView.topAnchor.constraint(equalTo: container.contentView.topAnchor, constant: 6),
+            stackView.bottomAnchor.constraint(equalTo: container.contentView.bottomAnchor, constant: -6)
+        ])
+
+        selectionToolbar = container
+        return container
+    }
+
+    private func highlightButton(for color: HighlightColor) -> UIButton {
+        let button = UIButton(type: .system)
+        button.accessibilityLabel = "\(color.rawValue.capitalized): \(color.semanticLevel)"
+        button.backgroundColor = color.solidUIColor
+        button.layer.cornerRadius = 14
+        button.layer.borderColor = UIColor.label.withAlphaComponent(0.2).cgColor
+        button.layer.borderWidth = 1
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.widthAnchor.constraint(equalToConstant: 28).isActive = true
+        button.heightAnchor.constraint(equalToConstant: 28).isActive = true
+        button.addAction(UIAction { [weak self] _ in
+            self?.hideSelectionToolbar()
+            self?.onHighlightSelection?(color)
+        }, for: .touchUpInside)
+        return button
+    }
+
+    private func removeHighlightButton() -> UIButton {
+        let button = UIButton(type: .system)
+        button.accessibilityLabel = "Remove highlight"
+        button.setImage(UIImage(systemName: "trash"), for: .normal)
+        button.tintColor = .systemRed
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.widthAnchor.constraint(equalToConstant: 32).isActive = true
+        button.heightAnchor.constraint(equalToConstant: 32).isActive = true
+        button.addAction(UIAction { [weak self] _ in
+            self?.hideSelectionToolbar()
+            self?.onRemoveHighlight?()
+        }, for: .touchUpInside)
+        return button
+    }
+}
+
+private extension HighlightColor {
+    var solidUIColor: UIColor {
+        switch self {
+        case .red:
+            return .systemRed
+        case .green:
+            return .systemGreen
+        case .yellow:
+            return .systemYellow
+        case .blue:
+            return .systemBlue
         }
     }
 }

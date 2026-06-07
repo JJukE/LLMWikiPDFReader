@@ -13,33 +13,39 @@ struct ContentView: View {
     }
 
     var body: some View {
-        NavigationSplitView {
-            sidebar
-                .navigationSplitViewColumnWidth(min: 280, ideal: 340, max: 420)
-        } detail: {
-            VStack(spacing: 0) {
-                if appState.pdfDocument == nil {
-                    ContentUnavailableView("No PDF Open", systemImage: "doc.text.magnifyingglass")
-                } else {
-                    PDFKitView(
-                        pdfDocument: appState.pdfDocument,
-                        pdfView: $appState.pdfView,
-                        continuousScrolling: settings.continuousScrolling,
-                        showPageBreaks: settings.showPageBreaks,
-                        onSelectAnnotation: { appState.select(annotationID: $0, navigate: false) },
-                        onHighlightSelection: { appState.addHighlightFromSelection(color: $0) },
-                        onRemoveHighlight: appState.removeSelectedOrSelectionHighlights,
-                        onViewportChanged: appState.noteViewportChanged,
-                        onViewReady: appState.scheduleInitialViewLocationCapture
-                    )
+        Group {
+            if appState.hasAnnotationsFolder {
+                NavigationSplitView {
+                    sidebar
+                        .navigationSplitViewColumnWidth(min: 280, ideal: 340, max: 420)
+                } detail: {
+                    VStack(spacing: 0) {
+                        if appState.pdfDocument == nil {
+                            ContentUnavailableView("No PDF Open", systemImage: "doc.text.magnifyingglass")
+                        } else {
+                            PDFKitView(
+                                pdfDocument: appState.pdfDocument,
+                                pdfView: $appState.pdfView,
+                                continuousScrolling: settings.continuousScrolling,
+                                showPageBreaks: settings.showPageBreaks,
+                                onSelectAnnotation: { appState.select(annotationID: $0, navigate: false) },
+                                onHighlightSelection: { appState.addHighlightFromSelection(color: $0) },
+                                onRemoveHighlight: appState.removeSelectedOrSelectionHighlights,
+                                onViewportChanged: appState.noteViewportChanged,
+                                onViewReady: appState.scheduleInitialViewLocationCapture
+                            )
+                        }
+                        Divider()
+                        Text(appState.status)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(8)
+                    }
                 }
-                Divider()
-                Text(appState.status)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(8)
+            } else {
+                requiredAnnotationsFolderView
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .removeSelectedHighlightShortcut)) { _ in
@@ -51,6 +57,9 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .forwardShortcut)) { _ in
             appState.goForward()
         }
+        .onReceive(settings.$annotationsFolderPath) { _ in
+            appState.restoreAnnotationsFolderFromSettings()
+        }
     }
 
     private var sidebar: some View {
@@ -58,16 +67,10 @@ struct ContentView: View {
             Text("LLM Wiki Reader")
                 .font(.headline)
 
-            Button("Choose Vault", action: appState.chooseVault)
             Button("Open PDF", action: appState.openPDF)
             Button("Settings") {
                 openSettings()
             }
-
-            Divider()
-
-            Button("Export Markdown", action: appState.exportMarkdown)
-                .keyboardShortcut("e", modifiers: [.command])
 
             Divider()
 
@@ -107,6 +110,23 @@ struct ContentView: View {
                 }
             }
         }
+        .padding()
+    }
+
+    private var requiredAnnotationsFolderView: some View {
+        VStack(spacing: 16) {
+            ContentUnavailableView(
+                "Annotations Folder Required",
+                systemImage: "folder.badge.plus",
+                description: Text("Choose the folder where highlight JSON files will be saved.")
+            )
+            Button("Choose Annotations Folder", action: appState.chooseAnnotationsFolder)
+                .buttonStyle(.borderedProminent)
+            Button("Settings") {
+                openSettings()
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
     }
 

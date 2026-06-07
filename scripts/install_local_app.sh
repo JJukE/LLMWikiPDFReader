@@ -3,8 +3,9 @@ set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_NAME="LLMWikiPDFReader"
-BUNDLE_ID="dev.jjuke.llm-wiki-pdf-reader"
+BUNDLE_ID="com.example.LLMWikiPDFReader"
 EXECUTABLE_NAME="LLMWikiPDFReader"
+SWIFTPM_PRODUCT_NAME="LLMWikiPDFReaderMac"
 APP_DIR="$HOME/Applications/$APP_NAME.app"
 LEGACY_APP_DIR="$HOME/Applications/LLM Wiki PDF Reader.app"
 CONTENTS_DIR="$APP_DIR/Contents"
@@ -13,14 +14,14 @@ RESOURCES_DIR="$CONTENTS_DIR/Resources"
 ICON_FILE="AppIcon.icns"
 
 cd "$PROJECT_DIR"
-swift build -c release --product "$EXECUTABLE_NAME"
+swift build -c release --product "$SWIFTPM_PRODUCT_NAME"
 
 if [[ -d "$LEGACY_APP_DIR" && "$LEGACY_APP_DIR" != "$APP_DIR" ]]; then
     rm -rf "$LEGACY_APP_DIR"
 fi
 
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
-cp ".build/release/$EXECUTABLE_NAME" "$MACOS_DIR/$EXECUTABLE_NAME"
+cp ".build/release/$SWIFTPM_PRODUCT_NAME" "$MACOS_DIR/$EXECUTABLE_NAME"
 chmod +x "$MACOS_DIR/$EXECUTABLE_NAME"
 cp "$PROJECT_DIR/Resources/$ICON_FILE" "$RESOURCES_DIR/$ICON_FILE"
 

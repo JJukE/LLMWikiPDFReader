@@ -1,6 +1,5 @@
 import AnnotationCore
 import Foundation
-import VaultExporter
 import ZoteroResolver
 
 @main
@@ -14,8 +13,8 @@ struct AnnotationCoreSmokeTests {
         try testReaderDocumentMergerUsesTombstonesForDeletes()
         try testReaderDocumentMergerLetsNewerAnnotationBeatOlderTombstone()
         try testMarkdownExporterCreatesRequiredSections()
-        try testVaultExporterWritesMarkdownAndSidecarWithRelativePaths()
-        try testVaultSynchronizerMergesExistingSidecarAndExportsMarkdown()
+        try testAnnotationStoreWritesSidecarDirectlyInAnnotationsFolder()
+        try testAnnotationStoreMergesExistingSidecarDirectlyInAnnotationsFolder()
         try testZoteroResolverInfersItemKeyOnlyInsideConfiguredRoot()
         print("AnnotationCoreSmokeTests passed")
     }
@@ -163,43 +162,46 @@ struct AnnotationCoreSmokeTests {
         try expect(markdown.contains("annotation_json_path: \"raw/reader-annotations/sample.json\""))
     }
 
-    private static func testVaultExporterWritesMarkdownAndSidecarWithRelativePaths() throws {
-        let vaultURL = FileManager.default.temporaryDirectory
+    private static func testAnnotationStoreWritesSidecarDirectlyInAnnotationsFolder() throws {
+        let annotationsDirectoryURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("LLMWikiPDFReaderTests-\(UUID().uuidString)", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: vaultURL) }
+        defer { try? FileManager.default.removeItem(at: annotationsDirectoryURL) }
 
-        let result = try VaultMarkdownExporter().export(sampleDocument(), vaultURL: vaultURL)
+        let store = AnnotationStore()
+        let document = sampleDocument()
+        let sidecarURL = try store.sidecarURL(for: document, annotationsDirectoryURL: annotationsDirectoryURL)
+        try store.save(document, to: sidecarURL)
 
-        try expect(FileManager.default.fileExists(atPath: result.markdownURL.path))
-        try expect(FileManager.default.fileExists(atPath: result.sidecarURL.path))
-        try expect(result.document.exports.obsidianNotePath == "raw/papers/2026 - Sample Paper - Reader Highlights.md")
+        try expect(sidecarURL.deletingLastPathComponent() == annotationsDirectoryURL)
+        try expect(sidecarURL.lastPathComponent == "researcher2026sample.json")
+        try expect(FileManager.default.fileExists(atPath: sidecarURL.path))
+        try expect(!FileManager.default.fileExists(atPath: annotationsDirectoryURL.appendingPathComponent("raw").path))
 
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        let savedDocument = try decoder.decode(ReaderDocument.self, from: Data(contentsOf: result.sidecarURL))
-        try expect(savedDocument.exports.obsidianNotePath == "raw/papers/2026 - Sample Paper - Reader Highlights.md")
+        let savedDocument = try decoder.decode(ReaderDocument.self, from: Data(contentsOf: sidecarURL))
+        try expect(savedDocument.paper.title == "Sample Paper")
     }
 
-    private static func testVaultSynchronizerMergesExistingSidecarAndExportsMarkdown() throws {
-        let vaultURL = FileManager.default.temporaryDirectory
+    private static func testAnnotationStoreMergesExistingSidecarDirectlyInAnnotationsFolder() throws {
+        let annotationsDirectoryURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("LLMWikiPDFReaderSyncTests-\(UUID().uuidString)", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: vaultURL) }
+        defer { try? FileManager.default.removeItem(at: annotationsDirectoryURL) }
 
         let store = AnnotationStore()
         let remoteDocument = sampleDocument(annotations: [sampleAnnotation(idSuffix: 6, selectedText: "remote addition")])
-        let sidecarURL = try store.sidecarURL(for: remoteDocument, vaultURL: vaultURL)
+        let sidecarURL = try store.sidecarURL(for: remoteDocument, annotationsDirectoryURL: annotationsDirectoryURL)
         try store.save(remoteDocument, to: sidecarURL)
 
         let localDocument = sampleDocument(annotations: [sampleAnnotation(idSuffix: 7, selectedText: "local addition")])
-        let result = try VaultAnnotationSynchronizer().saveAndExport(localDocument, vaultURL: vaultURL)
+        let mergedDocument = try store.mergedDocument(localDocument, withExistingDocumentAt: sidecarURL)
+        try store.save(mergedDocument, to: sidecarURL)
 
-        try expect(result.mergedExistingSidecar)
-        try expect(FileManager.default.fileExists(atPath: result.markdownURL.path))
-        try expect(result.document.annotations.map(\.selectedText).sorted() == ["local addition", "remote addition"])
+        try expect(mergedDocument.annotations.map(\.selectedText).sorted() == ["local addition", "remote addition"])
 
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        let savedDocument = try decoder.decode(ReaderDocument.self, from: Data(contentsOf: result.sidecarURL))
+        let savedDocument = try decoder.decode(ReaderDocument.self, from: Data(contentsOf: sidecarURL))
         try expect(savedDocument.annotations.map(\.selectedText).sorted() == ["local addition", "remote addition"])
     }
 

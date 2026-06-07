@@ -9,7 +9,18 @@ struct SettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 settingsSection("Annotations") {
-                    Toggle("Save annotations after highlight changes", isOn: $settings.autoSaveAnnotations)
+                    settingRow("Folder") {
+                        Text(settings.annotationsFolderPath ?? "None")
+                            .foregroundStyle(settings.annotationsFolderPath == nil ? .secondary : .primary)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.trailing)
+                    }
+
+                    HStack {
+                        Button("Choose Annotations Folder", action: chooseAnnotationsFolder)
+                        Button("Clear", action: settings.clearAnnotationsFolder)
+                            .disabled(settings.annotationsFolderPath == nil)
+                    }
                 }
 
                 settingsSection("PDF View") {
@@ -63,6 +74,21 @@ struct SettingsView: View {
 
         if panel.runModal() == .OK, let url = panel.url {
             settings.setDefaultPDFDirectory(url)
+        }
+    }
+
+    private func chooseAnnotationsFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = "Choose the folder where highlight JSON files should be saved."
+        if let url = settings.annotationsFolderURL() {
+            panel.directoryURL = url
+        }
+
+        if panel.runModal() == .OK, let url = panel.url {
+            settings.setAnnotationsFolder(url)
         }
     }
 

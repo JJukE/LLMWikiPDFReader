@@ -18,9 +18,9 @@ Generated runtime data belongs under vault paths such as `raw/reader-annotations
 
 - Use the `pdfreader` conda environment for this project: `conda activate pdfreader`.
 - `swift build` builds all package targets in debug mode.
-- `swift run LLMWikiPDFReader` launches the local macOS app.
+- `swift run LLMWikiPDFReaderMac` launches the local SwiftPM macOS app runner.
 - `swift run AnnotationCoreSmokeTests` checks serialization, Markdown export, vault export, and Zotero path inference.
-- `swift build -c release --product LLMWikiPDFReader` builds the release app executable.
+- `swift build -c release --product LLMWikiPDFReaderMac` builds the release app executable used by the local installer.
 - `./scripts/install_local_app.sh` installs a local `.app` bundle into `$HOME/Applications/LLMWikiPDFReader.app`.
 
 Run commands from the repository root inside the `pdfreader` conda environment.

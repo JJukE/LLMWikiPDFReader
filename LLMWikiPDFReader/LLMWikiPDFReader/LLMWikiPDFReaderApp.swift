@@ -11,7 +11,11 @@ import SwiftUI
 struct LLMWikiPDFReaderApp: App {
     var body: some Scene {
         WindowGroup {
+            #if os(iOS)
+            MobileContentView()
+            #else
             ContentView()
+            #endif
         }
     }
 }

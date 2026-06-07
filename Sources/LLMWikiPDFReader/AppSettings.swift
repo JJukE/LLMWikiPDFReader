@@ -46,6 +46,7 @@ final class AppSettings: ObservableObject {
     }
 
     @Published private(set) var defaultPDFDirectoryPath: String?
+    @Published private(set) var annotationsFolderPath: String?
 
     private let defaults: UserDefaults
 
@@ -63,6 +64,49 @@ final class AppSettings: ObservableObject {
             fallback: "]"
         )
         defaultPDFDirectoryPath = defaults.string(forKey: Keys.defaultPDFDirectoryPath)
+        annotationsFolderPath = defaults.string(forKey: Keys.annotationsFolderPath)
+    }
+
+    func setAnnotationsFolder(_ url: URL) {
+        annotationsFolderPath = url.path
+        defaults.set(url.path, forKey: Keys.annotationsFolderPath)
+
+        do {
+            let bookmark = try url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
+            defaults.set(bookmark, forKey: Keys.annotationsFolderBookmark)
+        } catch {
+            defaults.removeObject(forKey: Keys.annotationsFolderBookmark)
+        }
+    }
+
+    func clearAnnotationsFolder() {
+        annotationsFolderPath = nil
+        defaults.removeObject(forKey: Keys.annotationsFolderPath)
+        defaults.removeObject(forKey: Keys.annotationsFolderBookmark)
+    }
+
+    func annotationsFolderURL() -> URL? {
+        if let data = defaults.data(forKey: Keys.annotationsFolderBookmark) {
+            do {
+                var isStale = false
+                let url = try URL(
+                    resolvingBookmarkData: data,
+                    options: .withSecurityScope,
+                    relativeTo: nil,
+                    bookmarkDataIsStale: &isStale
+                )
+                if isStale {
+                    setAnnotationsFolder(url)
+                }
+                return url
+            } catch {
+                clearAnnotationsFolder()
+                return nil
+            }
+        }
+
+        guard let path = annotationsFolderPath, !path.isEmpty else { return nil }
+        return URL(fileURLWithPath: path, isDirectory: true)
     }
 
     func setDefaultPDFDirectory(_ url: URL) {
@@ -119,6 +163,8 @@ private enum Keys {
     static let showPageBreaks = "showPageBreaks"
     static let previousPageShortcutKey = "previousPageShortcutKey"
     static let nextPageShortcutKey = "nextPageShortcutKey"
+    static let annotationsFolderBookmark = "annotationsFolderBookmark"
+    static let annotationsFolderPath = "annotationsFolderPath"
     static let defaultPDFDirectoryBookmark = "defaultPDFDirectoryBookmark"
     static let defaultPDFDirectoryPath = "defaultPDFDirectoryPath"
 }
