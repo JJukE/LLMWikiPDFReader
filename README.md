@@ -18,6 +18,16 @@ Lightweight research PDF reader for JJukE's LLM Wiki workflow.
 - Maintains PDF Back/Forward history for intentional scroll sessions, page jumps, and highlight jumps.
 - Sidebar highlight rows navigate to the stored highlight location in the PDF.
 
+## v2 iCloud sync foundation
+
+- Sidecar JSON now uses schema version 2 for new documents while preserving v1 decode compatibility.
+- PDFs can record a `pdf_relative_path` when opened from the selected iCloud Drive Obsidian vault, so different devices can resolve the same vault file without sharing absolute local paths.
+- Annotation saves merge with any existing sidecar before writing, preserving independent highlights from other devices.
+- Deleted highlights write tombstones under `deleted_annotations`, preventing older iCloud sidecars from restoring removed highlights.
+- Autosave now saves the merged sidecar and regenerates the Obsidian Markdown note.
+- The macOS app observes the open sidecar file and redraws highlights when iCloud Drive updates it.
+- The app target includes an iOS/iPadOS SwiftUI entry and UIKit/PDFKit view scaffold for opening vault PDFs through Files and rendering synced highlights.
+
 ## Module layout
 
 - `AnnotationCore`: shared paper metadata, annotations, color semantics, JSON persistence, and Markdown rendering.
@@ -80,10 +90,11 @@ The sidecar JSON has this stable shape:
     "authors": [],
     "year": "2026",
     "citekey": null,
-    "zotero_item_key": null,
-    "zotero_select_uri": null,
-    "pdf_path": "/path/to/paper.pdf",
-    "pdf_bookmark": null
+      "zotero_item_key": null,
+      "zotero_select_uri": null,
+      "pdf_path": "/path/to/paper.pdf",
+      "pdf_relative_path": "raw/pdfs/paper.pdf",
+      "pdf_bookmark": null
   },
   "annotations": [
     {
@@ -98,6 +109,12 @@ The sidecar JSON has this stable shape:
       "bbox": []
     }
   ],
+  "deleted_annotations": [
+    {
+      "id": "UUID",
+      "deleted_at": "ISO-8601"
+    }
+  ],
   "exports": {
     "obsidian_note_path": "raw/papers/example.md",
     "wiki_page_path": null
@@ -107,4 +124,4 @@ The sidecar JSON has this stable shape:
 
 ## Future iPhone/iPad path
 
-`AnnotationCore` is platform-neutral. The app-specific PDFKit wrapper is currently macOS-only, so iPhone/iPad support should add UIKit/PDFKit views while reusing the same JSON and Markdown export code.
+`AnnotationCore`, `VaultExporter`, and `ZoteroResolver` are platform-neutral. The v2 scaffold adds a UIKit/PDFKit view and iOS app entry, but touch-native highlight creation and conflict UI still need product work before the mobile app is feature-complete.

@@ -46,11 +46,22 @@ extension Notification.Name {
     static let backShortcut = Notification.Name("backShortcut")
     static let forwardShortcut = Notification.Name("forwardShortcut")
 }
+#elseif os(iOS)
+import SwiftUI
+
+@main
+struct LLMWikiPDFReaderApp: App {
+    var body: some Scene {
+        WindowGroup {
+            MobileContentView()
+        }
+    }
+}
 #else
 @main
 struct LLMWikiPDFReaderApp {
     static func main() {
-        fatalError("The app target is implemented for macOS first. AnnotationCore is shared for future iOS/iPadOS targets.")
+        fatalError("LLMWikiPDFReaderApp is implemented for macOS and iOS/iPadOS.")
     }
 }
 #endif

@@ -46,12 +46,7 @@ public struct VaultMarkdownExporter {
     }
 
     public func relativePath(for fileURL: URL, in vaultURL: URL) -> String {
-        let vaultPath = vaultURL.standardizedFileURL.path
-        let filePath = fileURL.standardizedFileURL.path
-        guard filePath.hasPrefix(vaultPath + "/") else {
-            return filePath
-        }
-        return String(filePath.dropFirst(vaultPath.count + 1))
+        store.relativePath(for: fileURL, in: vaultURL) ?? fileURL.standardizedFileURL.path
     }
 
     public func markdownFileName(for document: ReaderDocument) -> String {

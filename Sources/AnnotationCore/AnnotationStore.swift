@@ -32,6 +32,15 @@ public struct AnnotationStore {
         try data.write(to: url, options: [.atomic])
     }
 
+    public func mergedDocument(_ document: ReaderDocument, withExistingDocumentAt url: URL) throws -> ReaderDocument {
+        guard fileManager.fileExists(atPath: url.path) else {
+            return document
+        }
+
+        let existingDocument = try load(from: url)
+        return ReaderDocumentMerger().merged(local: document, remote: existingDocument)
+    }
+
     public func documentIdentifier(for document: ReaderDocument) -> String {
         if let citekey = document.paper.citekey, !citekey.isEmpty {
             return slug(citekey)
@@ -48,5 +57,22 @@ public struct AnnotationStore {
         let scalars = value.unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" }
         let collapsed = String(scalars).replacingOccurrences(of: "-+", with: "-", options: .regularExpression)
         return collapsed.trimmingCharacters(in: CharacterSet(charactersIn: "-")).lowercased()
+    }
+
+    public func relativePath(for fileURL: URL, in vaultURL: URL) -> String? {
+        let vaultPath = vaultURL.standardizedFileURL.path
+        let filePath = fileURL.standardizedFileURL.path
+        guard filePath.hasPrefix(vaultPath + "/") else {
+            return nil
+        }
+        return String(filePath.dropFirst(vaultPath.count + 1))
+    }
+
+    public func fileURL(forVaultRelativePath relativePath: String, in vaultURL: URL) -> URL {
+        relativePath
+            .split(separator: "/", omittingEmptySubsequences: true)
+            .reduce(vaultURL) { url, component in
+                url.appendingPathComponent(String(component))
+            }
     }
 }

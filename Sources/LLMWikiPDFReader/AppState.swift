@@ -1,6 +1,7 @@
 #if os(macOS)
 import AnnotationCore
 import AppKit
+import Darwin
 import PDFKit
 import SwiftUI
 import UniformTypeIdentifiers
@@ -31,16 +32,21 @@ final class AppState: ObservableObject {
     private var pendingScrollStopProgress: CGFloat?
     private var hasQualifiedScrollVelocitySinceCheckpoint = false
     private var suppressViewportHistory = false
+    private var sidecarObservationSource: DispatchSourceFileSystemObject?
 
     private let store = AnnotationStore()
     private let settings: AppSettings
-    private let vaultExporter = VaultMarkdownExporter()
+    private let vaultSynchronizer = VaultAnnotationSynchronizer()
     private let zoteroResolver = ZoteroResolver()
     private let scrollHistoryVelocityThreshold: CGFloat = 0.5
     private let scrollStopHistoryDelayNanoseconds: UInt64 = 1_000_000_000
 
     init(settings: AppSettings) {
         self.settings = settings
+    }
+
+    deinit {
+        sidecarObservationSource?.cancel()
     }
 
     var annotations: [HighlightAnnotation] {
@@ -55,6 +61,10 @@ final class AppState: ObservableObject {
         panel.message = "Choose the root of your LLM Wiki Obsidian vault."
         if panel.runModal() == .OK {
             vaultURL = panel.url
+            updateCurrentDocumentVaultRelativePath()
+            loadSidecarIfAvailable()
+            redrawHighlights()
+            startSidecarObservation()
             status = "Vault selected: \(panel.url?.path ?? "")"
         }
     }
@@ -119,11 +129,15 @@ final class AppState: ObservableObject {
         pdfDocument = document
         selectedAnnotationID = nil
         clearHistory()
-        let metadata = zoteroResolver.metadata(forPDFAt: url, bookmark: securityScopedBookmark(for: url))
+        var metadata = zoteroResolver.metadata(forPDFAt: url, bookmark: securityScopedBookmark(for: url))
+        if let vaultURL, let relativePath = store.relativePath(for: url, in: vaultURL) {
+            metadata.pdfRelativePath = relativePath
+        }
         readerDocument = ReaderDocument(paper: metadata)
         loadSidecarIfAvailable()
         redrawHighlights()
         scheduleInitialViewLocationCapture()
+        startSidecarObservation()
         status = "Opened \(metadata.title)"
     }
 
@@ -554,9 +568,11 @@ final class AppState: ObservableObject {
             return
         }
         do {
-            let url = try store.sidecarURL(for: document, vaultURL: vaultURL)
-            try store.save(document, to: url)
-            status = "Saved annotations to \(url.path)"
+            let result = try vaultSynchronizer.saveAndExport(document, vaultURL: vaultURL)
+            readerDocument = result.document
+            redrawHighlights()
+            startSidecarObservation()
+            status = "Saved annotations to \(result.sidecarURL.path)"
         } catch {
             status = "Failed to save annotations: \(error.localizedDescription)"
         }
@@ -568,8 +584,10 @@ final class AppState: ObservableObject {
             return
         }
         do {
-            let result = try vaultExporter.export(document, vaultURL: vaultURL)
+            let result = try vaultSynchronizer.saveAndExport(document, vaultURL: vaultURL)
             readerDocument = result.document
+            redrawHighlights()
+            startSidecarObservation()
             status = "Exported Markdown to \(result.markdownURL.path)"
         } catch {
             status = "Failed to export Markdown: \(error.localizedDescription)"
@@ -581,7 +599,7 @@ final class AppState: ObservableObject {
         do {
             let url = try store.sidecarURL(for: document, vaultURL: vaultURL)
             if FileManager.default.fileExists(atPath: url.path) {
-                readerDocument = try store.load(from: url)
+                readerDocument = try vaultSynchronizer.loadMergedSidecar(for: document, vaultURL: vaultURL)
             }
         } catch {
             status = "Could not load existing sidecar: \(error.localizedDescription)"
@@ -603,16 +621,70 @@ final class AppState: ObservableObject {
     }
 
     private func removeHighlights(withIDs ids: [HighlightAnnotation.ID], from document: inout ReaderDocument) {
-        let uniqueIDs = Set(ids)
-        document.annotations.removeAll { uniqueIDs.contains($0.id) }
+        document.markAnnotationsDeleted(withIDs: ids)
         readerDocument = document
         if let pdfDocument {
-            for id in uniqueIDs {
+            for id in Set(ids) {
                 PDFAnnotationBridge.removeAppAnnotations(withID: id, from: pdfDocument)
             }
         }
         selectedAnnotationID = nil
         saveAfterHighlightChange()
+    }
+
+    private func updateCurrentDocumentVaultRelativePath() {
+        guard let vaultURL, var document = readerDocument else { return }
+        let pdfURL = URL(fileURLWithPath: document.paper.pdfPath)
+        guard let relativePath = store.relativePath(for: pdfURL, in: vaultURL) else { return }
+        document.paper.pdfRelativePath = relativePath
+        readerDocument = document
+    }
+
+    private func startSidecarObservation() {
+        stopSidecarObservation()
+
+        guard let vaultURL, let document = readerDocument else { return }
+        guard let sidecarURL = try? store.sidecarURL(for: document, vaultURL: vaultURL) else { return }
+        guard FileManager.default.fileExists(atPath: sidecarURL.path) else { return }
+
+        let fileDescriptor = open(sidecarURL.path, O_EVTONLY)
+        guard fileDescriptor >= 0 else { return }
+
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fileDescriptor,
+            eventMask: [.write, .delete, .rename, .extend, .attrib],
+            queue: .main
+        )
+        source.setEventHandler { [weak self] in
+            Task { @MainActor in
+                self?.reloadObservedSidecar()
+                self?.startSidecarObservation()
+            }
+        }
+        source.setCancelHandler {
+            close(fileDescriptor)
+        }
+
+        sidecarObservationSource = source
+        source.resume()
+    }
+
+    private func stopSidecarObservation() {
+        sidecarObservationSource?.cancel()
+        sidecarObservationSource = nil
+    }
+
+    private func reloadObservedSidecar() {
+        guard let vaultURL, let document = readerDocument else { return }
+        do {
+            let syncedDocument = try vaultSynchronizer.loadMergedSidecar(for: document, vaultURL: vaultURL)
+            guard syncedDocument != document else { return }
+            readerDocument = syncedDocument
+            redrawHighlights()
+            status = "Synced annotations from iCloud sidecar."
+        } catch {
+            status = "Could not refresh synced annotations: \(error.localizedDescription)"
+        }
     }
 
     private func securityScopedBookmark(for url: URL) -> Data? {

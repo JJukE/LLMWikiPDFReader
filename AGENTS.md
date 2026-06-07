@@ -16,13 +16,14 @@ Generated runtime data belongs under vault paths such as `raw/reader-annotations
 
 ## Build, Test, and Development Commands
 
+- Use the `pdfreader` conda environment for this project: `conda activate pdfreader`.
 - `swift build` builds all package targets in debug mode.
 - `swift run LLMWikiPDFReader` launches the local macOS app.
 - `swift run AnnotationCoreSmokeTests` checks serialization, Markdown export, vault export, and Zotero path inference.
 - `swift build -c release --product LLMWikiPDFReader` builds the release app executable.
 - `./scripts/install_local_app.sh` installs a local `.app` bundle into `$HOME/Applications/LLMWikiPDFReader.app`.
 
-Run commands from the repository root.
+Run commands from the repository root inside the `pdfreader` conda environment.
 
 ## Coding Style & Naming Conventions
 
@@ -37,6 +38,7 @@ Add focused checks to `Sources/AnnotationCoreSmokeTests/main.swift` when changin
 Before handing off changes, run:
 
 ```bash
+conda activate pdfreader
 swift build
 swift run AnnotationCoreSmokeTests
 ```

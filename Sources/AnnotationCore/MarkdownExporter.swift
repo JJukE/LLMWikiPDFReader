@@ -13,6 +13,9 @@ public struct MarkdownExporter {
         if let itemKey = document.paper.zoteroItemKey { lines.append("zotero_item_key: \(yaml(itemKey))") }
         if let zoteroURI = document.paper.zoteroSelectURI { lines.append("zotero_select_uri: \(yaml(zoteroURI))") }
         lines.append("pdf_path: \(yaml(document.paper.pdfPath))")
+        if let pdfRelativePath = document.paper.pdfRelativePath {
+            lines.append("pdf_relative_path: \(yaml(pdfRelativePath))")
+        }
         if let annotationJSONPath { lines.append("annotation_json_path: \(yaml(annotationJSONPath))") }
         lines.append("---")
         lines.append("")
