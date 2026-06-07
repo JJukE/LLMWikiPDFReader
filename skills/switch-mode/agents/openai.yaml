@@ -1,0 +1,4 @@
+interface:
+  display_name: "Switch Mode"
+  short_description: "Switch repo operating modes safely"
+  default_prompt: "Use $switch-mode to switch this codebase between re-install mode and version management mode."

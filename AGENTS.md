@@ -49,6 +49,29 @@ History currently contains one short commit, `Initial LLM Wiki PDF reader`. Use 
 
 Pull requests should include a brief summary, testing performed, and screenshots or screen recordings for visible SwiftUI/PDFKit changes. Link related issues or notes when available, and call out any changes to the sidecar JSON schema or vault output paths.
 
+## Operating Modes
+
+Use `$switch-mode` when the user asks to move between local reinstall work and GitHub-safe version management. The tracked source for this skill lives in `skills/switch-mode/`; run `./scripts/install_repo_skills.sh` on a new Mac to expose it as a normal local Codex skill. The supported commands are:
+
+- `Switch the codebase to re-install mode.`
+- `Switch the codebase to version management mode.`
+
+Re-install mode is for local iPhone/iPad or signed Xcode runs from this Mac. Use the Xcode `LLMWikiPDFReader` scheme, set the local Apple development team, and use a stable private bundle identifier so iOS treats reinstallations as the same app and preserves local app-container data where possible. Private values such as `DEVELOPMENT_TEAM`, personal bundle identifiers, provisioning profile names, certificates, and local absolute paths must come from the user's private notes or direct input for that session; do not store them in this repository or in the `$switch-mode` skill.
+
+Version management mode is for preparing commits, pull requests, and GitHub pushes. Restore checked-in signing fields to public-safe values before publishing. The app target bundle identifier should use a placeholder such as `com.example.LLMWikiPDFReader`, and checked-in project files should not contain a personal Apple team ID.
+
+Before pushing to GitHub, check for accidental personal metadata:
+
+```bash
+git ls-files -ci --exclude-standard
+git ls-files | rg "(xcuserdata|\.DS_Store|\.mobileprovision|\.p12|\.pem|\.key|\.env|Package\.resolved)$"
+rg -n "(/Users/|DEVELOPMENT_TEAM|iCloud~QReader)" . --glob '!README.md' --glob '!AGENTS.md' --glob '!*.md'
+```
+
 ## Security & Configuration Tips
 
 The app must not mutate original PDF files. Keep Zotero integration read-only and preserve security-scoped bookmark behavior on macOS. Avoid hard-coding personal vault paths; accept roots through the app or test-local temporary directories.
+
+Xcode signing is intentionally not tied to a checked-in Apple developer team. Set your own team and bundle identifier locally in Xcode or through `$switch-mode` before device runs, periodic iPhone/iPad reinstallations, or App Store/TestFlight distribution.
+
+Do not commit provisioning profiles, certificates, private keys, `.env` files, generated app bundles, local Xcode user data, or exported vault data under paths such as `raw/reader-annotations/` and `raw/papers/` unless they are intentional fixtures.

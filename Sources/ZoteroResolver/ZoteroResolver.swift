@@ -2,13 +2,19 @@ import AnnotationCore
 import Foundation
 
 public struct ZoteroPDFRoot {
-    public static let defaultPath = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Documents/Zotero", isDirectory: true)
-        .path
+    public static var defaultURL: URL {
+        let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+        return (documentsURL ?? URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true))
+            .appendingPathComponent("Zotero", isDirectory: true)
+    }
+
+    public static var defaultPath: String {
+        defaultURL.path
+    }
 
     public var url: URL
 
-    public init(url: URL = URL(fileURLWithPath: Self.defaultPath, isDirectory: true)) {
+    public init(url: URL = Self.defaultURL) {
         self.url = url
     }
 }

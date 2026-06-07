@@ -61,6 +61,8 @@ The SwiftPM executable product is named `LLMWikiPDFReaderMac`; use it only for l
 swift run LLMWikiPDFReaderMac
 ```
 
+For iPhone/iPad reinstall from this Mac, open the Xcode project, select the `LLMWikiPDFReader` scheme, configure signing locally, then run the app on the device. Repository-specific reinstall and GitHub-safe version-management guidance lives in `AGENTS.md`.
+
 Mac workflow:
 
 1. Choose the annotations folder where sidecar JSON files should be saved.
@@ -103,12 +105,6 @@ The install script builds a release executable, bundles the app icon from `Resou
 Back/Forward history uses normalized visible PDF position rather than raw scroll pixels. Intentional scroll sessions are detected at about `0.5` pages per second; after scrolling stops for 1 second, one history entry is added for the location before that scroll session. This keeps a fast scroll from page 4 to page 1 as one Back step instead of many tiny steps.
 
 Explicit navigation, such as page jumps and sidebar highlight jumps, records the current location before moving. Clicking highlighted text inside the PDF selects it without adding a navigation jump.
-
-## Public Repo Notes
-
-- Xcode signing is intentionally not tied to a checked-in Apple developer team. Set your own team and bundle identifier in Xcode before device runs or App Store/TestFlight distribution.
-- Do not commit provisioning profiles, certificates, private keys, `.env` files, generated app bundles, or local Xcode user data.
-- Keep exported vault data under paths such as `raw/reader-annotations/` and `raw/papers/` out of the repo unless it is intentionally added as a fixture.
 
 ## Data Contract
 
