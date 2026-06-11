@@ -6,6 +6,7 @@ struct ContentView: View {
     @Environment(\.openSettings) private var openSettings
     @ObservedObject private var settings: AppSettings
     @StateObject private var appState: AppState
+    @FocusState private var isFindFieldFocused: Bool
 
     init(settings: AppSettings) {
         self.settings = settings
@@ -23,6 +24,9 @@ struct ContentView: View {
                         if appState.pdfDocument == nil {
                             ContentUnavailableView("No PDF Open", systemImage: "doc.text.magnifyingglass")
                         } else {
+                            if appState.isFindPresented {
+                                findBar
+                            }
                             PDFKitView(
                                 pdfDocument: appState.pdfDocument,
                                 pdfView: $appState.pdfView,
@@ -57,8 +61,17 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .forwardShortcut)) { _ in
             appState.goForward()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .findShortcut)) { _ in
+            appState.showFind()
+            focusFindField()
+        }
         .onReceive(settings.$annotationsFolderPath) { _ in
             appState.restoreAnnotationsFolderFromSettings()
+        }
+        .onChange(of: appState.isFindPresented) { _, isPresented in
+            if isPresented {
+                focusFindField()
+            }
         }
     }
 
@@ -152,6 +165,58 @@ struct ContentView: View {
         }
     }
 
+    private var findBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+
+            TextField(
+                "Find in PDF",
+                text: Binding(
+                    get: { appState.findQuery },
+                    set: { appState.updateFindQuery($0) }
+                )
+            )
+            .textFieldStyle(.roundedBorder)
+            .focused($isFindFieldFocused)
+            .onSubmit {
+                appState.findNext()
+            }
+
+            Text(findCountLabel)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+                .frame(minWidth: 56, alignment: .trailing)
+
+            Button {
+                appState.findPrevious()
+            } label: {
+                Image(systemName: "chevron.up")
+            }
+            .help("Previous match")
+            .disabled(appState.findMatchCount == 0)
+
+            Button {
+                appState.findNext()
+            } label: {
+                Image(systemName: "chevron.down")
+            }
+            .help("Next match")
+            .disabled(appState.findMatchCount == 0)
+
+            Button {
+                appState.hideFind()
+            } label: {
+                Image(systemName: "xmark")
+            }
+            .help("Close Find")
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(.regularMaterial)
+    }
+
     private var highlightToolbar: some View {
         HStack(spacing: 8) {
             ForEach(HighlightColor.allCases) { color in
@@ -204,6 +269,19 @@ struct ContentView: View {
             return "3"
         case .blue:
             return "4"
+        }
+    }
+
+    private var findCountLabel: String {
+        guard !appState.findQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return "0 / 0"
+        }
+        return "\(appState.currentFindMatchNumber) / \(appState.findMatchCount)"
+    }
+
+    private func focusFindField() {
+        DispatchQueue.main.async {
+            isFindFieldFocused = true
         }
     }
 }

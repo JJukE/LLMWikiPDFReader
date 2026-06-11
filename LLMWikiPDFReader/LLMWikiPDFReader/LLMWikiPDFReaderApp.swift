@@ -10,6 +10,19 @@ import SwiftUI
 @main
 struct LLMWikiPDFReaderApp: App {
     var body: some Scene {
+        #if os(macOS)
+        WindowGroup {
+            ContentView()
+        }
+        .commands {
+            CommandMenu("Reader") {
+                Button("Find") {
+                    NotificationCenter.default.post(name: .findShortcut, object: nil)
+                }
+                .keyboardShortcut("f", modifiers: [.command])
+            }
+        }
+        #else
         WindowGroup {
             #if os(iOS)
             MobileContentView()
@@ -17,5 +30,12 @@ struct LLMWikiPDFReaderApp: App {
             ContentView()
             #endif
         }
+        #endif
     }
 }
+
+#if os(macOS)
+extension Notification.Name {
+    static let findShortcut = Notification.Name("findShortcut")
+}
+#endif

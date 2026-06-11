@@ -15,9 +15,14 @@ final class AppState: ObservableObject {
     @Published var readerDocument: ReaderDocument?
     @Published var annotationsDirectoryURL: URL?
     @Published var status: String = "Open a PDF to begin."
+    @Published var isFindPresented = false
+    @Published var findQuery = ""
+    @Published private(set) var findMatchCount = 0
+    @Published private(set) var currentFindMatchNumber = 0
     @Published private(set) var canGoBack = false
     @Published private(set) var canGoForward = false
 
+    private var findMatches: [PDFSelection] = []
     private var backHistory: [PDFViewLocation] = []
     private var forwardHistory: [PDFViewLocation] = []
     private var lastStableScrollLocation: PDFViewLocation?
@@ -154,6 +159,9 @@ final class AppState: ObservableObject {
 
         pdfDocument = document
         selectedAnnotationID = nil
+        clearFindResults()
+        findQuery = ""
+        isFindPresented = false
         clearHistory()
         var metadata = zoteroResolver.metadata(forPDFAt: url, bookmark: securityScopedBookmark(for: url))
         if let annotationsDirectoryURL, let relativePath = store.relativePath(for: url, in: annotationsDirectoryURL) {
@@ -293,6 +301,44 @@ final class AppState: ObservableObject {
         removeHighlights(withIDs: ids, from: &current)
         pdfView.clearSelection()
         status = ids.count == 1 ? "Removed highlight." : "Removed \(ids.count) highlights."
+    }
+
+    func showFind() {
+        guard pdfDocument != nil else {
+            status = "Open a PDF before finding text."
+            return
+        }
+        isFindPresented = true
+    }
+
+    func hideFind() {
+        isFindPresented = false
+        findQuery = ""
+        clearFindResults()
+    }
+
+    func updateFindQuery(_ query: String) {
+        findQuery = query
+        rebuildFindResults()
+    }
+
+    func findNext() {
+        guard !findMatches.isEmpty else {
+            rebuildFindResults()
+            return
+        }
+        let nextIndex = ((currentFindMatchNumber == 0 ? 0 : currentFindMatchNumber) % findMatches.count)
+        showFindMatch(at: nextIndex)
+    }
+
+    func findPrevious() {
+        guard !findMatches.isEmpty else {
+            rebuildFindResults()
+            return
+        }
+        let currentIndex = max(currentFindMatchNumber - 1, 0)
+        let previousIndex = (currentIndex - 1 + findMatches.count) % findMatches.count
+        showFindMatch(at: previousIndex)
     }
 
     func jump(to annotation: HighlightAnnotation) {
@@ -575,6 +621,49 @@ final class AppState: ObservableObject {
     private func updateHistoryAvailability() {
         canGoBack = !backHistory.isEmpty
         canGoForward = !forwardHistory.isEmpty
+    }
+
+    private func rebuildFindResults() {
+        let query = findQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else {
+            clearFindResults()
+            return
+        }
+
+        guard let pdfDocument else {
+            clearFindResults()
+            status = "Open a PDF before finding text."
+            return
+        }
+
+        findMatches = pdfDocument.findString(query, withOptions: [.caseInsensitive])
+        findMatchCount = findMatches.count
+        pdfView?.highlightedSelections = findMatches
+
+        guard !findMatches.isEmpty else {
+            currentFindMatchNumber = 0
+            pdfView?.showSearchSelection(nil)
+            status = "No matches for \"\(query)\"."
+            return
+        }
+
+        showFindMatch(at: 0)
+        status = findMatches.count == 1 ? "Found 1 match." : "Found \(findMatches.count) matches."
+    }
+
+    private func showFindMatch(at index: Int) {
+        guard findMatches.indices.contains(index) else { return }
+        currentFindMatchNumber = index + 1
+        pdfView?.highlightedSelections = findMatches
+        pdfView?.showSearchSelection(findMatches[index])
+    }
+
+    private func clearFindResults() {
+        findMatches.removeAll()
+        findMatchCount = 0
+        currentFindMatchNumber = 0
+        pdfView?.highlightedSelections = []
+        pdfView?.showSearchSelection(nil)
     }
 
     func goToPage(at pageIndex: Int) {

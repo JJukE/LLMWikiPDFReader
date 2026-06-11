@@ -12,6 +12,13 @@ struct LLMWikiPDFReaderApp: App {
         }
         .commands {
             CommandMenu("Reader") {
+                Button("Find") {
+                    NotificationCenter.default.post(name: .findShortcut, object: nil)
+                }
+                .keyboardShortcut("f", modifiers: [.command])
+
+                Divider()
+
                 Button("Remove Selected Highlight") {
                     NotificationCenter.default.post(name: .removeSelectedHighlightShortcut, object: nil)
                 }
@@ -42,6 +49,7 @@ struct LLMWikiPDFReaderApp: App {
 }
 
 extension Notification.Name {
+    static let findShortcut = Notification.Name("findShortcut")
     static let removeSelectedHighlightShortcut = Notification.Name("removeSelectedHighlightShortcut")
     static let backShortcut = Notification.Name("backShortcut")
     static let forwardShortcut = Notification.Name("forwardShortcut")

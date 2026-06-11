@@ -263,6 +263,32 @@ private final class SelectablePDFView: PDFView {
         hideSelectionToolbar()
         onRemoveHighlight?()
     }
+
+    fileprivate func performSearchSelection(_ selection: PDFSelection?) {
+        hideSelectionToolbar()
+        guard let selection else {
+            clearSelection()
+            return
+        }
+        setCurrentSelection(selection, animate: true)
+        go(to: selection)
+    }
+}
+
+extension PDFView {
+    func showSearchSelection(_ selection: PDFSelection?) {
+        if let selectablePDFView = self as? SelectablePDFView {
+            selectablePDFView.performSearchSelection(selection)
+            return
+        }
+
+        guard let selection else {
+            clearSelection()
+            return
+        }
+        setCurrentSelection(selection, animate: true)
+        go(to: selection)
+    }
 }
 
 private extension HighlightColor {
@@ -357,6 +383,7 @@ private final class SelectablePDFView: PDFView {
     private var separatorView: UIView?
     private var removeButton: UIButton?
     private var showsRemoveButton = false
+    private var suppressSelectionToolbar = false
 
     deinit {
         if let selectionObserver {
@@ -415,6 +442,11 @@ private final class SelectablePDFView: PDFView {
     }
 
     private func selectionDidChange() {
+        guard !suppressSelectionToolbar else {
+            hideSelectionToolbar()
+            return
+        }
+
         if hasCurrentTextSelection {
             showSelectionToolbar(includeRemoveButton: false)
         } else if !showsRemoveButton {
@@ -558,6 +590,39 @@ private final class SelectablePDFView: PDFView {
             self?.onRemoveHighlight?()
         }, for: .touchUpInside)
         return button
+    }
+
+    fileprivate func performSearchSelection(_ selection: PDFSelection?) {
+        suppressSelectionToolbar = true
+        defer {
+            DispatchQueue.main.async { [weak self] in
+                self?.suppressSelectionToolbar = false
+            }
+        }
+
+        hideSelectionToolbar()
+        guard let selection else {
+            clearSelection()
+            return
+        }
+        setCurrentSelection(selection, animate: true)
+        go(to: selection)
+    }
+}
+
+extension PDFView {
+    func showSearchSelection(_ selection: PDFSelection?) {
+        if let selectablePDFView = self as? SelectablePDFView {
+            selectablePDFView.performSearchSelection(selection)
+            return
+        }
+
+        guard let selection else {
+            clearSelection()
+            return
+        }
+        setCurrentSelection(selection, animate: true)
+        go(to: selection)
     }
 }
 

@@ -12,6 +12,11 @@ struct ContentView: View {
     @State private var readerDocument: ReaderDocument?
     @State private var selectedAnnotationID: HighlightAnnotation.ID?
     @State private var status = "Choose an Annotations Folder to begin."
+    @State private var isFindPresented = false
+    @State private var findQuery = ""
+    @State private var findMatches: [PDFSelection] = []
+    @State private var currentFindMatchNumber = 0
+    @FocusState private var isFindFieldFocused: Bool
 
     private let store = AnnotationStore()
     private let zoteroResolver = ZoteroResolver()
@@ -29,6 +34,9 @@ struct ContentView: View {
                         if pdfDocument == nil {
                             ContentUnavailableView("No PDF Open", systemImage: "doc.text.magnifyingglass")
                         } else {
+                            if isFindPresented {
+                                findBar
+                            }
                             PDFKitView(
                                 pdfDocument: pdfDocument,
                                 pdfView: $pdfView,
@@ -53,6 +61,15 @@ struct ContentView: View {
             }
         }
         .onAppear(perform: restoreAnnotationsFolder)
+        .onReceive(NotificationCenter.default.publisher(for: .findShortcut)) { _ in
+            showFind()
+            focusFindField()
+        }
+        .onChange(of: isFindPresented) { _, isPresented in
+            if isPresented {
+                focusFindField()
+            }
+        }
         .frame(minWidth: 1000, minHeight: 700)
     }
 
@@ -132,6 +149,56 @@ struct ContentView: View {
         .padding()
     }
 
+    private var findBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+
+            TextField("Find in PDF", text: Binding(get: {
+                findQuery
+            }, set: {
+                updateFindQuery($0)
+            }))
+            .textFieldStyle(.roundedBorder)
+            .focused($isFindFieldFocused)
+            .onSubmit {
+                findNext()
+            }
+
+            Text(findCountLabel)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+                .frame(minWidth: 56, alignment: .trailing)
+
+            Button {
+                findPrevious()
+            } label: {
+                Image(systemName: "chevron.up")
+            }
+            .help("Previous match")
+            .disabled(findMatches.isEmpty)
+
+            Button {
+                findNext()
+            } label: {
+                Image(systemName: "chevron.down")
+            }
+            .help("Next match")
+            .disabled(findMatches.isEmpty)
+
+            Button {
+                hideFind()
+            } label: {
+                Image(systemName: "xmark")
+            }
+            .help("Close Find")
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(.regularMaterial)
+    }
+
     private var annotations: [HighlightAnnotation] {
         readerDocument?.annotations.sorted { ($0.page, $0.createdAt) < ($1.page, $1.createdAt) } ?? []
     }
@@ -179,10 +246,92 @@ struct ContentView: View {
 
         pdfDocument = document
         selectedAnnotationID = nil
+        clearFindResults()
+        findQuery = ""
+        isFindPresented = false
         readerDocument = ReaderDocument(paper: metadata)
         loadSidecarIfAvailable()
         redrawHighlights()
         status = "Opened \(metadata.title)"
+    }
+
+    private func showFind() {
+        guard pdfDocument != nil else {
+            status = "Open a PDF before finding text."
+            return
+        }
+        isFindPresented = true
+    }
+
+    private func hideFind() {
+        isFindPresented = false
+        findQuery = ""
+        clearFindResults()
+    }
+
+    private func updateFindQuery(_ query: String) {
+        findQuery = query
+        rebuildFindResults()
+    }
+
+    private func findNext() {
+        guard !findMatches.isEmpty else {
+            rebuildFindResults()
+            return
+        }
+        let nextIndex = (currentFindMatchNumber % findMatches.count)
+        showFindMatch(at: nextIndex)
+    }
+
+    private func findPrevious() {
+        guard !findMatches.isEmpty else {
+            rebuildFindResults()
+            return
+        }
+        let currentIndex = max(currentFindMatchNumber - 1, 0)
+        let previousIndex = (currentIndex - 1 + findMatches.count) % findMatches.count
+        showFindMatch(at: previousIndex)
+    }
+
+    private func rebuildFindResults() {
+        let query = findQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else {
+            clearFindResults()
+            return
+        }
+
+        guard let pdfDocument else {
+            clearFindResults()
+            status = "Open a PDF before finding text."
+            return
+        }
+
+        findMatches = pdfDocument.findString(query, withOptions: [.caseInsensitive])
+        pdfView?.highlightedSelections = findMatches
+
+        guard !findMatches.isEmpty else {
+            currentFindMatchNumber = 0
+            pdfView?.showSearchSelection(nil)
+            status = "No matches for \"\(query)\"."
+            return
+        }
+
+        showFindMatch(at: 0)
+        status = findMatches.count == 1 ? "Found 1 match." : "Found \(findMatches.count) matches."
+    }
+
+    private func showFindMatch(at index: Int) {
+        guard findMatches.indices.contains(index) else { return }
+        currentFindMatchNumber = index + 1
+        pdfView?.highlightedSelections = findMatches
+        pdfView?.showSearchSelection(findMatches[index])
+    }
+
+    private func clearFindResults() {
+        findMatches.removeAll()
+        currentFindMatchNumber = 0
+        pdfView?.highlightedSelections = []
+        pdfView?.showSearchSelection(nil)
     }
 
     private func addHighlightFromSelection(_ color: HighlightColor) {
@@ -349,6 +498,19 @@ struct ContentView: View {
             return .yellow
         case .blue:
             return .blue
+        }
+    }
+
+    private var findCountLabel: String {
+        guard !findQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return "0 / 0"
+        }
+        return "\(currentFindMatchNumber) / \(findMatches.count)"
+    }
+
+    private func focusFindField() {
+        DispatchQueue.main.async {
+            isFindFieldFocused = true
         }
     }
 
