@@ -1,0 +1,60 @@
+name: Publish SideStore build
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sidestore-publish
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: macos-26
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Run core smoke tests
+        run: swift run AnnotationCoreSmokeTests
+
+      - name: Build unsigned SideStore artifacts
+        run: ./scripts/build_sideload_ipa.sh "${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+
+      - name: Publish rolling prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: sidestore-latest
+        run: |
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" \
+              --target "$GITHUB_SHA" \
+              --title "Latest SideStore build" \
+              --notes "Unsigned iPhone/iPad build generated from main. Install through SideStore." \
+              --prerelease
+          fi
+
+          gh release edit "$RELEASE_TAG" \
+            --title "Latest SideStore build" \
+            --notes "Unsigned build ${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT} from ${GITHUB_SHA}."
+
+          gh release upload "$RELEASE_TAG" \
+            .build/sidestore/LLMWikiPDFReader.ipa \
+            .build/sidestore/SHA256SUMS \
+            --clobber
+
+          gh release upload "$RELEASE_TAG" \
+            .build/sidestore/source.json \
+            --clobber

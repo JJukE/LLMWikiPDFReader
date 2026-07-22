@@ -63,6 +63,54 @@ swift run LLMWikiPDFReaderMac
 
 For iPhone/iPad reinstall from this Mac, open the Xcode project, select the `LLMWikiPDFReader` scheme, configure signing locally, then run the app on the device. Repository-specific reinstall and GitHub-safe version-management guidance lives in `AGENTS.md`.
 
+## SideStore Distribution
+
+Every push to `main` runs the `Publish SideStore build` GitHub Actions workflow. It runs the core smoke tests, creates an unsigned iPhone/iPad IPA, and replaces the assets in the `sidestore-latest` prerelease. No Apple certificate, provisioning profile, Team ID, or Apple Account credential is stored in GitHub.
+
+The SideStore source URL is:
+
+```text
+https://github.com/JJukE/LLMWikiPDFReader/releases/download/sidestore-latest/source.json
+```
+
+SideStore can add it directly, or through this URL scheme after SideStore is installed:
+
+```text
+sidestore://source?url=https://github.com/JJukE/LLMWikiPDFReader/releases/download/sidestore-latest/source.json
+```
+
+### One-time device setup
+
+Repeat these steps on the iPhone and iPad. Using a separate SideStore-only Apple Account for each device avoids one device revoking the other's free development certificate.
+
+1. Install LocalDevVPN from the App Store and allow its VPN configuration.
+2. Connect the device to the Mac once, trust the Mac, and use `iloader` to install the current stable SideStore with that device's SideStore-only Apple Account.
+3. Enable Developer Mode under `Settings > Privacy & Security`, then trust the developer app under `Settings > General > VPN & Device Management`.
+4. Connect LocalDevVPN, open SideStore, sign in with the same Apple Account used by `iloader`, and refresh SideStore itself once.
+5. Add the source URL above and install `LLMWikiPDFReader`.
+6. Select the annotations and PDF folders again inside the SideStore-installed app. Keep the previous Xcode-installed app until the new installation can open the expected PDFs and sidecar JSON.
+
+SideStore and `LLMWikiPDFReader` use two of the three active sideloaded-app slots available to a free Apple Account. The release IPA uses the stable public bundle identifier `com.example.LLMWikiPDFReader`; SideStore applies the device's personal development signature during installation.
+
+### Refresh and update
+
+- Refreshing or installing requires Wi-Fi and an active LocalDevVPN connection. Cellular data alone is not sufficient.
+- Leave Background App Refresh enabled for SideStore. For additional reliability, create a daily Shortcuts automation that connects LocalDevVPN and invokes SideStore's `Refresh All Apps` action. Do not immediately disconnect the VPN while refresh is still running.
+- A successful refresh resets the seven-day development period without the Mac or a cable.
+- After a `main` push finishes publishing, open SideStore and tap `Update` for `LLMWikiPDFReader`. iOS does not permit this new-binary installation to happen silently with a free development account.
+
+If an OS update, device reset, or pairing failure invalidates the pairing file, connect that device to the Mac again and replace its pairing file with `iloader`. Re-sideload without deleting the app first to preserve its container when possible.
+
+### Build the IPA locally
+
+The same artifact can be produced locally after accepting the Xcode license and selecting a full Xcode installation:
+
+```bash
+./scripts/build_sideload_ipa.sh 1.1
+```
+
+The IPA, source JSON, and checksums are written under `.build/sidestore/`.
+
 Mac workflow:
 
 1. Choose the annotations folder where sidecar JSON files should be saved.
